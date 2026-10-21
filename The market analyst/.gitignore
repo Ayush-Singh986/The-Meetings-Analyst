@@ -1,0 +1,13 @@
+# Terraform state and local configuration
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+override.tf
+override.tf.json
+
+# Python local test artifacts
+__pycache__/
+*.py[cod]
