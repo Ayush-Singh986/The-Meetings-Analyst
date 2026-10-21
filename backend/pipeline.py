@@ -42,11 +42,27 @@ def mark_failed(meeting_id, message):
 
 def start_transcription(record):
     object_key = unquote_plus(record["s3"]["object"]["key"])
-    match = re.fullmatch(r"uploads/([0-9a-f-]{36})/([0-9a-f-]{36})\.([a-z0-9]+)", object_key)
+    match = re.fullmatch(
+        r"uploads/([A-Za-z0-9-]{1,128})/([0-9a-f-]{36})\.(mp3|mp4|wav|flac|ogg|webm|amr|m4a)",
+        object_key,
+        flags=re.IGNORECASE,
+    )
     if not match:
         logger.warning("Skipping upload with an unexpected meeting ID: %s", object_key)
         return
     owner_id, meeting_id, extension = match.groups()
+
+    result = meetings.get_item(Key={"meetingId": meeting_id})
+    meeting = result.get("Item")
+    if not meeting:
+        logger.warning("No meeting record exists for uploaded object %s", object_key)
+        return
+    if (
+        meeting.get("ownerId") != owner_id
+        or meeting.get("s3Key") != object_key
+        or meeting.get("status") not in {"UPLOADING", "PROCESSING"}
+    ):
+        return
 
     try:
         head = s3.head_object(Bucket=bucket, Key=object_key)
@@ -58,18 +74,7 @@ def start_transcription(record):
         mark_failed(meeting_id, "This recording exceeds the 500 MB upload limit.")
         return
 
-    result = meetings.get_item(Key={"meetingId": meeting_id})
-    meeting = result.get("Item")
-    if not meeting:
-        logger.warning("No meeting record exists for uploaded object %s", object_key)
-        return
-    if meeting.get("status") not in {"UPLOADING", "PROCESSING"}:
-        return
-
-    if meeting.get("ownerId") != owner_id or meeting.get("s3Key") != object_key:
-        logger.warning("Uploaded object does not belong to its meeting record: %s", object_key)
-        return
-
+    extension = extension.lower()
     media_format = "mp4" if extension == "m4a" else extension
     job_name = f"mtg-{meeting_id}"
     try:
@@ -253,6 +258,18 @@ def process_transcribe_event(event):
         return
     meeting_id = match.group(1)
     status = message.get("TranscriptionJobStatus")
+    existing = meetings.get_item(Key={"meetingId": meeting_id}).get("Item")
+    owner_id = existing.get("ownerId") if existing else None
+    if (
+        not owner_id
+        or not re.fullmatch(
+            rf"uploads/{re.escape(owner_id)}/{meeting_id}\.(mp3|mp4|wav|flac|ogg|webm|amr|m4a)",
+            existing.get("s3Key", ""),
+            flags=re.IGNORECASE,
+        )
+    ):
+        logger.warning("Ignoring Transcribe event for an unowned meeting %s", meeting_id)
+        return
     if status == "FAILED":
         reason = message.get("FailureReason", "Amazon Transcribe could not process this recording.")
         mark_failed(meeting_id, reason)
@@ -262,7 +279,6 @@ def process_transcribe_event(event):
         logger.info("Transcription job %s is not complete yet", job_name)
         return
 
-    existing = meetings.get_item(Key={"meetingId": meeting_id}).get("Item")
     if not existing or existing.get("status") == "READY":
         return
 
@@ -271,9 +287,6 @@ def process_transcribe_event(event):
     if job_status != "COMPLETED":
         raise RuntimeError(f"Transcribe notified completion but the job is {job_status}.")
 
-    owner_id = existing.get("ownerId")
-    if not owner_id or not existing.get("s3Key", "").startswith(f"uploads/{owner_id}/"):
-        raise ValueError("The recording is missing a valid workspace owner.")
     output_key = f"transcribe-output/{owner_id}/{job_name}.json"
     raw = s3.get_object(Bucket=bucket, Key=output_key)["Body"].read()
     transcribe_result = json.loads(raw)

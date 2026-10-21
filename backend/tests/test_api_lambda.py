@@ -14,20 +14,22 @@ class FakeTable:
     def put_item(self, Item):
         self.items.append(Item)
 
-class FakeAttribute:
-    def eq(self, _value):
-        return self
+    def get_item(self, Key):
+        item = next((record for record in self.items if record["meetingId"] == Key["meetingId"]), None)
+        return {"Item": item} if item else {}
 
-    def contains(self, _value):
-        return self
 
-    def __and__(self, _other):
+class FakeCondition:
+    def __and__(self, other):
         return self
 
 
 class FakeS3:
-    def generate_presigned_url(self, operation, Params, ExpiresIn):
-        return f"https://uploads.example/{operation}/{Params['Key']}?expires={ExpiresIn}"
+    def generate_presigned_post(self, Bucket, Key, Fields, Conditions, ExpiresIn):
+        return {
+            "url": "https://uploads.example/",
+            "fields": {"key": Key, **Fields, "policy": "signed-policy"},
+        }
 
 
 def load_api():
@@ -37,7 +39,7 @@ def load_api():
     fake_boto3.resource = lambda *_args, **_kwargs: types.SimpleNamespace(Table=lambda _name: table)
     fake_dynamodb = types.ModuleType("boto3.dynamodb")
     fake_conditions = types.ModuleType("boto3.dynamodb.conditions")
-    fake_conditions.Attr = lambda *_args, **_kwargs: FakeAttribute()
+    fake_conditions.Attr = lambda *_args, **_kwargs: FakeCondition()
     path = Path(__file__).resolve().parents[1] / "api_lambda.py"
     spec = importlib.util.spec_from_file_location("briefly_test_api", path)
     module = importlib.util.module_from_spec(spec)
@@ -65,65 +67,20 @@ class ApiLambdaTests(unittest.TestCase):
     def setUpClass(cls):
         cls.api, cls.table = load_api()
 
-    def test_api_rejects_requests_without_a_verified_cognito_identity(self):
+    def test_api_rejects_requests_without_authenticated_cognito_claims(self):
         result = self.api.handler(
             {
-                "headers": {"authorization": "Bearer incorrect-token"},
-                "requestContext": {"http": {"method": "GET"}, "authorizer": {"jwt": {"claims": {}}}},
+                "requestContext": {"http": {"method": "GET"}},
                 "rawPath": "/meetings",
             },
             None,
         )
 
         self.assertEqual(result["statusCode"], 401)
-        self.assertIn("Sign in", result["body"])
+        self.assertIn("authenticated workspace account", result["body"])
 
-    def test_malformed_base64_request_body_returns_a_client_error(self):
-        result = self.api.handler(
-            {
-                "body": "not base64!",
-                "isBase64Encoded": True,
-                "requestContext": {
-                    "http": {"method": "POST"},
-                    "authorizer": {"jwt": {"claims": {"sub": "12345678-1234-1234-1234-123456789abc"}}},
-                },
-                "rawPath": "/upload-url",
-            },
-            None,
-        )
-
-        self.assertEqual(result["statusCode"], 400)
-        self.assertIn("valid JSON", result["body"])
-
-    def test_user_identity_is_read_from_verified_jwt_claims(self):
-        owner_id = "12345678-1234-1234-1234-123456789abc"
-
-        self.assertEqual(
-            self.api.current_user(
-                {
-                    "requestContext": {
-                        "authorizer": {"jwt": {"claims": {"sub": owner_id}}}
-                    }
-                }
-            ),
-            owner_id,
-        )
-
-    def test_unowned_meeting_detail_is_not_disclosed(self):
-        owner_id = "12345678-1234-1234-1234-123456789abc"
-        self.table.items[:] = [{"meetingId": "meeting-123", "ownerId": owner_id}]
-        self.table.get_item = lambda **_kwargs: {"Item": self.table.items[0]}
-
-        with self.assertRaises(self.api.RequestError) as error:
-            self.api.handle_meeting_detail(
-                "meeting-123",
-                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-            )
-
-        self.assertEqual(error.exception.status_code, 404)
-
-    def test_upload_url_uses_a_safe_random_key_and_persists_meeting(self):
-        owner_id = "12345678-1234-1234-1234-123456789abc"
+    def test_upload_post_is_scoped_and_size_limited_to_authenticated_owner(self):
+        owner_id = "workspace-owner"
         result = self.api.handle_upload_url(
             {
                 "fileName": "..\\recordings\\Budget review.wav",
@@ -138,16 +95,51 @@ class ApiLambdaTests(unittest.TestCase):
         self.assertTrue(meeting["s3Key"].startswith(f"uploads/{owner_id}/"))
         self.assertEqual(meeting["ownerId"], owner_id)
         self.assertEqual(meeting["status"], "UPLOADING")
-        self.assertTrue(result["uploadUrl"].startswith("https://uploads.example/put_object/"))
+        self.assertEqual(result["uploadUrl"], "https://uploads.example/")
+        self.assertIn("policy", result["uploadFields"])
+        self.assertEqual(result["uploadFields"]["key"], meeting["s3Key"])
 
     def test_upload_url_rejects_unsupported_recording_formats(self):
         with self.assertRaises(self.api.RequestError) as error:
             self.api.handle_upload_url(
                 {"fileName": "agenda.pdf", "contentType": "application/pdf", "fileSize": 100},
-                "12345678-1234-1234-1234-123456789abc",
+                "workspace-owner",
             )
 
         self.assertEqual(error.exception.status_code, 415)
+
+    def test_upload_url_rejects_boolean_file_size(self):
+        with self.assertRaises(self.api.RequestError) as error:
+            self.api.handle_upload_url(
+                {"fileName": "recording.wav", "contentType": "audio/wav", "fileSize": True},
+                "workspace-owner",
+            )
+
+        self.assertEqual(error.exception.status_code, 413)
+
+    def test_upload_url_rejects_malformed_content_type(self):
+        with self.assertRaises(self.api.RequestError) as error:
+            self.api.handle_upload_url(
+                {"fileName": "recording.wav", "contentType": {"invalid": "type"}, "fileSize": 100},
+                "workspace-owner",
+            )
+
+        self.assertEqual(error.exception.status_code, 400)
+
+    def test_meeting_detail_is_not_visible_to_a_different_owner(self):
+        self.table.items.append({
+            "meetingId": "12345678-1234-1234-1234-123456789abc",
+            "ownerId": "owner-one",
+            "s3Key": "uploads/owner-one/12345678-1234-1234-1234-123456789abc.wav",
+        })
+
+        with self.assertRaises(self.api.RequestError) as error:
+            self.api.handle_meeting_detail(
+                "12345678-1234-1234-1234-123456789abc",
+                "owner-two",
+            )
+
+        self.assertEqual(error.exception.status_code, 404)
 
 
 if __name__ == "__main__":

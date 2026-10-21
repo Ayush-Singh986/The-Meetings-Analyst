@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title description">
+  <title id="title">Briefly AI Meeting Analyst — 3D system architecture</title>
+  <desc id="description">An isometric system map showing Cognito-authenticated browser uploads flowing through CloudFront, WAF, API Gateway, S3, Lambda, Transcribe, Bedrock, DynamoDB, and SNS.</desc>
+  <defs>
+    <linearGradient id="bg" x2="1" y2="1"><stop stop-color="#0d1423"/><stop offset=".55" stop-color="#111d2e"/><stop offset="1" stop-color="#18283a"/></linearGradient>
+    <linearGradient id="platform" x2="0" y2="1"><stop stop-color="#23334a"/><stop offset="1" stop-color="#172438"/></linearGradient>
+    <linearGradient id="top" x2="1" y2="1"><stop stop-color="#eaf2ff"/><stop offset="1" stop-color="#c7d8f4"/></linearGradient>
+    <linearGradient id="front" x2="0" y2="1"><stop stop-color="#94add1"/><stop offset="1" stop-color="#607a9e"/></linearGradient>
+    <linearGradient id="side" x2="0" y2="1"><stop stop-color="#597292"/><stop offset="1" stop-color="#3c526e"/></linearGradient>
+    <linearGradient id="mint" x2="1" y2="1"><stop stop-color="#a7efd7"/><stop offset="1" stop-color="#54c6a4"/></linearGradient>
+    <linearGradient id="violet" x2="1" y2="1"><stop stop-color="#d7c9ff"/><stop offset="1" stop-color="#987be8"/></linearGradient>
+    <linearGradient id="blue" x2="1" y2="1"><stop stop-color="#c7e4ff"/><stop offset="1" stop-color="#71aeea"/></linearGradient>
+    <filter id="shadow" x="-40%" y="-50%" width="180%" height="220%"><feDropShadow dx="0" dy="16" stdDeviation="14" flood-color="#020711" flood-opacity=".45"/></filter>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse" patternTransform="skewY(-30) scale(1 .78)"><path d="M32 0H0V32" fill="none" stroke="#9bb5dd" stroke-opacity=".08" stroke-width="1"/></pattern>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9Z" fill="#78d6bd"/></marker>
+    <marker id="arrowAlt" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0 9 4.5 0 9Z" fill="#a996f5"/></marker>
+  </defs>
+  <rect width="1440" height="900" rx="30" fill="url(#bg)"/>
+  <circle cx="1180" cy="120" r="260" fill="#465b99" opacity=".11"/>
+  <circle cx="260" cy="670" r="290" fill="#39bd9b" opacity=".06"/>
+  <path d="M0 720 690 330l750 435v135H0Z" fill="#152238" opacity=".42"/>
+  <text x="74" y="78" fill="#9eb5d7" font-family="Inter,Segoe UI,sans-serif" font-size="13" font-weight="700" letter-spacing="3">BRIEFLY  /  SYSTEM DESIGN</text>
+  <text x="74" y="132" fill="#f4f7ff" font-family="Inter,Segoe UI,sans-serif" font-size="35" font-weight="650" letter-spacing="-1">From conversation to clarity.</text>
+  <text x="76" y="163" fill="#9eacc1" font-family="Inter,Segoe UI,sans-serif" font-size="15">A private, event-driven pipeline for meeting transcripts and decisions</text>
+  <g transform="translate(1112 69)">
+    <rect width="254" height="38" rx="19" fill="#1d3140" stroke="#315144"/>
+    <circle cx="20" cy="19" r="5" fill="#64d2ae" filter="url(#glow)"/>
+    <text x="36" y="23" fill="#b8d8cf" font-family="Inter,Segoe UI,sans-serif" font-size="10" font-weight="700" letter-spacing="1">IDENTITY · ENCRYPTION · ISOLATION</text>
+  </g>
+  <g opacity=".9">
+    <path d="m94 354 620-358 628 362-622 359Z" transform="translate(0 169)" fill="url(#platform)" stroke="#405675" stroke-width="2"/>
+    <path d="m94 523 620-358 628 362-622 359Z" fill="url(#grid)"/>
+    <path d="m94 523 620-358 628 362-622 359Z" fill="none" stroke="#526a8c" stroke-opacity=".5" stroke-width="2"/>
+  </g>
+  <g fill="none" stroke="#78d6bd" stroke-width="3" stroke-dasharray="7 9" marker-end="url(#arrow)" opacity=".95">
+    <path d="M270 330H388"/><path d="M544 330H662"/><path d="M818 330H936"/>
+    <path d="M1014 454V483"/><path d="M944 522H810"/><path d="M670 522H536"/><path d="M396 522H262"/>
+    <path d="M192 645C192 658 280 658 330 670"/><path d="M412 700H522"/><path d="M682 700H796"/>
+  </g>
+  <g fill="none" stroke="#ad9df3" stroke-width="2.5" stroke-dasharray="4 8" marker-end="url(#arrowAlt)" opacity=".85">
+    <path d="M960 733c0 38-30 52-76 52"/><path d="M1128 748c0 35-32 37-62 37"/>
+  </g>
+  <g font-family="Inter,Segoe UI,sans-serif" font-size="9" font-weight="700" letter-spacing="1">
+    <g transform="translate(258 277)"><rect width="78" height="22" rx="11" fill="#203b3a"/><text x="39" y="15" fill="#91e7cb" text-anchor="middle">HTTPS</text></g>
+    <g transform="translate(525 277)"><rect width="95" height="22" rx="11" fill="#203b3a"/><text x="47" y="15" fill="#91e7cb" text-anchor="middle">JWT · PKCE</text></g>
+    <g transform="translate(777 277)"><rect width="120" height="22" rx="11" fill="#203b3a"/><text x="60" y="15" fill="#91e7cb" text-anchor="middle">OWNER-SCOPED</text></g>
+    <g transform="translate(968 428)"><rect width="129" height="22" rx="11" fill="#203b3a"/><text x="64" y="15" fill="#91e7cb" text-anchor="middle">S3 OBJECT EVENT</text></g>
+    <g transform="translate(883 481)"><rect width="128" height="22" rx="11" fill="#203b3a"/><text x="64" y="15" fill="#91e7cb" text-anchor="middle">SPEAKER LABELS</text></g>
+    <g transform="translate(690 658)"><rect width="130" height="22" rx="11" fill="#302b4b"/><text x="65" y="15" fill="#c8baff" text-anchor="middle">SUMMARY + ACTIONS</text></g>
+  </g>
+  <g filter="url(#shadow)" font-family="Inter,Segoe UI,sans-serif">
+    <g transform="translate(122 314)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#top)" stroke="#e5efff"/>
+      <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
+      <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
+      <path d="m38 22 32-19 32 19-32 19Z" fill="#314461"/><path d="M48 20h46v24H48z" rx="3" fill="#e8f0fc"/>
+      <path d="M55 27h32M55 34h22" stroke="#7890b0" stroke-width="2" stroke-linecap="round"/>
+      <text x="70" y="79" fill="#f8fbff" font-size="14" font-weight="700" text-anchor="middle">Browser</text>
+      <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Dashboard · upload · search</text>
+      <circle cx="119" cy="89" r="4" fill="#6ce0ba"/>
+    </g>
+    <g transform="translate(396 314)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#blue)" stroke="#e5efff"/>
+      <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
+      <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
+      <path d="M70 0 97 15v28H43V15Z" fill="#eaf4ff" stroke="#b4c9e4" stroke-width="2"/>
+      <path d="M58 19h24M58 27h24M58 35h17" stroke="#5d82ad" stroke-width="2" stroke-linecap="round"/>
+      <text x="70" y="79" fill="#f8fbff" font-size="14" font-weight="700" text-anchor="middle">CloudFront + WAF</text>
+      <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">HTTPS · managed rules</text>
+      <circle cx="119" cy="89" r="4" fill="#6ce0ba"/>
+    </g>
+    <g transform="translate(670 314)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#violet)" stroke="#f0eaff"/>
+      <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
+      <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
+      <path d="M70 2 96 13v19c0 16-11 26-26 34-15-8-26-18-26-34V13Z" fill="#f4f0ff" stroke="#b1a0e9" stroke-width="2"/>
+      <path d="m59 33 8 8 15-18" fill="none" stroke="#7c64ca" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="70" y="79" fill="#f8fbff" font-size="14" font-weight="700" text-anchor="middle">Amazon Cognito</text>
+      <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">OAuth · PKCE · optional MFA</text>
+      <circle cx="119" cy="89" r="4" fill="#c6b2ff"/>
+    </g>
+    <g transform="translate(944 314)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#blue)" stroke="#e5efff"/>
+      <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
+      <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
+      <path d="M51 8 89 32M89 8 51 32M70 1v39" stroke="#4776a4" stroke-width="3" stroke-linecap="round"/>
+      <text x="70" y="79" fill="#f8fbff" font-size="14" font-weight="700" text-anchor="middle">API Gateway</text>
+      <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">JWT authorizer · throttling</text>
+      <circle cx="119" cy="89" r="4" fill="#6ce0ba"/>
+    </g>
+    <g transform="translate(944 507)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#mint)" stroke="#ddfff3"/>
+      <path d="M0 20v77l70 41V60Z" fill="#4ca989" stroke="#6ac8a7"/>
+      <path d="M140 20v77L70 138V60Z" fill="#327d68" stroke="#3b967a"/>
+      <path d="m51 4 38 0-4 40-30 0Z" fill="#effff9" stroke="#8bd8bf" stroke-width="2"/>
+      <path d="M59 17h22M59 24h22M59 31h22" stroke="#55ae8e" stroke-width="2"/>
+      <text x="70" y="79" fill="#f7fffc" font-size="14" font-weight="700" text-anchor="middle">Amazon S3</text>
+      <text x="70" y="99" fill="#d3f5e9" font-size="10" text-anchor="middle">Private · SSE-KMS · versioned</text>
+      <circle cx="119" cy="89" r="4" fill="#c8ffeb"/>
+    </g>
+    <g transform="translate(670 507)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#violet)" stroke="#f0eaff"/>
+      <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
+      <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
+      <path d="m51 34 17-28h12L64 34h14L54 60l9-20H51Z" fill="#fff" stroke="#ab97eb" stroke-width="1.5"/>
+      <text x="70" y="79" fill="#f8fbff" font-size="14" font-weight="700" text-anchor="middle">Starter Lambda</text>
+      <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Validate owner · start job</text>
+      <circle cx="119" cy="89" r="4" fill="#c6b2ff"/>
+    </g>
+    <g transform="translate(396 507)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#blue)" stroke="#e5efff"/>
+      <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
+      <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
+      <path d="M49 30c-9-17 9-31 21-17 12-14 30 0 21 17l-21 24Z" fill="#eff7ff" stroke="#8eb7df" stroke-width="2"/>
+      <path d="M54 31h11l5-10 7 20 5-10h7" fill="none" stroke="#6496c7" stroke-width="2"/>
+      <text x="70" y="79" fill="#f8fbff" font-size="14" font-weight="700" text-anchor="middle">Amazon Transcribe</text>
+      <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Timestamps · speaker labels</text>
+      <circle cx="119" cy="89" r="4" fill="#6ce0ba"/>
+    </g>
+    <g transform="translate(122 507)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#violet)" stroke="#f0eaff"/>
+      <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
+      <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
+      <path d="m50 15 20-12 20 12v25L70 51 50 40Z" fill="#f5f0ff" stroke="#b5a2ea" stroke-width="2"/>
+      <path d="M59 23h22M59 29h18M59 35h14" stroke="#8d74d3" stroke-width="2"/>
+      <text x="70" y="79" fill="#f8fbff" font-size="14" font-weight="700" text-anchor="middle">Processor Lambda</text>
+      <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Analyze · index · notify</text>
+      <circle cx="119" cy="89" r="4" fill="#c6b2ff"/>
+    </g>
+    <g transform="translate(260 690)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#violet)" stroke="#f0eaff"/>
+      <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
+      <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
+      <path d="M70 3c-18 0-23 19-12 28-12 16 3 28 12 22 9 6 24-6 12-22C93 22 88 3 70 3Z" fill="#f4f0ff" stroke="#b5a2ea" stroke-width="2"/>
+      <path d="M70 7v41M57 20h11m4 0h11M57 37h11m4 0h11" stroke="#927bd6" stroke-width="2"/>
+      <text x="70" y="79" fill="#f8fbff" font-size="14" font-weight="700" text-anchor="middle">Amazon Bedrock</text>
+      <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Topics · decisions · actions</text>
+      <circle cx="119" cy="89" r="4" fill="#c6b2ff"/>
+    </g>
+    <g transform="translate(534 690)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#blue)" stroke="#e5efff"/>
+      <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
+      <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
+      <ellipse cx="70" cy="12" rx="23" ry="10" fill="#f0f7ff" stroke="#9ebad8" stroke-width="2"/>
+      <path d="M47 12v28c0 6 10 11 23 11s23-5 23-11V12M47 26c0 6 10 11 23 11s23-5 23-11" fill="none" stroke="#8eadd0" stroke-width="2"/>
+      <text x="70" y="79" fill="#f8fbff" font-size="14" font-weight="700" text-anchor="middle">Amazon DynamoDB</text>
+      <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Owner-scoped records + search</text>
+      <circle cx="119" cy="89" r="4" fill="#6ce0ba"/>
+    </g>
+    <g transform="translate(808 690)">
+      <path d="m0 20 70-40 70 40-70 40Z" fill="url(#mint)" stroke="#ddfff3"/>
+      <path d="M0 20v77l70 41V60Z" fill="#4ca989" stroke="#6ac8a7"/>
+      <path d="M140 20v77L70 138V60Z" fill="#327d68" stroke="#3b967a"/>
+      <rect x="49" y="10" width="42" height="32" rx="4" fill="#effff9" stroke="#8bd8bf" stroke-width="2"/>
+      <path d="m52 14 18 14 18-14" fill="none" stroke="#55ae8e" stroke-width="2"/>
+      <text x="70" y="79" fill="#f7fffc" font-size="14" font-weight="700" text-anchor="middle">Amazon SNS</text>
+      <text x="70" y="99" fill="#d3f5e9" font-size="10" text-anchor="middle">Transcript-ready notifications</text>
+      <circle cx="119" cy="89" r="4" fill="#c8ffeb"/>
+    </g>
+  </g>
+  <g transform="translate(1015 674)" font-family="Inter,Segoe UI,sans-serif">
+    <rect width="325" height="119" rx="16" fill="#18283a" stroke="#344d67"/>
+    <text x="22" y="31" fill="#a5bad4" font-size="10" font-weight="700" letter-spacing="1.5">SECURITY BY DEFAULT</text>
+    <circle cx="26" cy="56" r="4" fill="#70daba"/><text x="40" y="60" fill="#dce7f6" font-size="11">Cognito JWT · account isolation</text>
+    <circle cx="26" cy="79" r="4" fill="#70daba"/><text x="40" y="83" fill="#dce7f6" font-size="11">Private S3 · TLS · rotating KMS keys</text>
+    <circle cx="26" cy="102" r="4" fill="#70daba"/><text x="40" y="106" fill="#dce7f6" font-size="11">WAF · throttling · least-privilege IAM</text>
+  </g>
+  <text x="74" y="858" fill="#8191aa" font-family="Inter,Segoe UI,sans-serif" font-size="11">Manual recording uploads today · Zoom and Teams webhooks are future integration work</text>
+  <text x="1364" y="858" fill="#60728d" font-family="Inter,Segoe UI,sans-serif" font-size="10" text-anchor="end">BRIEFLY  •  AWS</text>
+</svg>

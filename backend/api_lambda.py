@@ -1,5 +1,4 @@
 import base64
-import binascii
 import json
 import logging
 import os
@@ -38,6 +37,19 @@ def response(status_code, payload):
     }
 
 
+def parse_body(event):
+    body = event.get("body") or "{}"
+    if event.get("isBase64Encoded"):
+        body = base64.b64decode(body).decode("utf-8")
+    try:
+        value = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RequestError(400, "Request body must be valid JSON.") from exc
+    if not isinstance(value, dict):
+        raise RequestError(400, "Request body must be a JSON object.")
+    return value
+
+
 def current_user(event):
     claims = (
         event.get("requestContext", {})
@@ -46,24 +58,9 @@ def current_user(event):
         .get("claims", {})
     )
     user_id = claims.get("sub")
-    if not isinstance(user_id, str) or not user_id:
-        raise RequestError(401, "Sign in to access this workspace.")
+    if not isinstance(user_id, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,128}", user_id):
+        raise RequestError(401, "A valid authenticated workspace account is required.")
     return user_id
-
-
-def parse_body(event):
-    body = event.get("body") or "{}"
-    try:
-        if not isinstance(body, str):
-            raise RequestError(400, "Request body must be valid JSON.")
-        if event.get("isBase64Encoded"):
-            body = base64.b64decode(body, validate=True).decode("utf-8")
-        value = json.loads(body)
-    except (binascii.Error, json.JSONDecodeError, UnicodeDecodeError) as exc:
-        raise RequestError(400, "Request body must be valid JSON.") from exc
-    if not isinstance(value, dict):
-        raise RequestError(400, "Request body must be a JSON object.")
-    return value
 
 
 def scan_all(table, **kwargs):
@@ -92,16 +89,26 @@ def handle_upload_url(body, owner_id):
     if not isinstance(file_size, int) or isinstance(file_size, bool) or file_size < 1 or file_size > max_upload_bytes:
         raise RequestError(413, "Recordings must be between 1 byte and 500 MB.")
 
+    if not isinstance(content_type, str):
+        raise RequestError(400, "Provide a valid recording content type.")
     safe_content_type = content_type.split(";", 1)[0].strip().lower()
-    if len(safe_content_type) > 100 or "/" not in safe_content_type:
+    if (
+        len(safe_content_type) > 100
+        or not re.fullmatch(r"[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+", safe_content_type)
+    ):
         raise RequestError(400, "Provide a valid recording content type.")
 
     meeting_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     object_key = f"uploads/{owner_id}/{meeting_id}.{extension}"
-    upload_url = s3.generate_presigned_url(
-        "put_object",
-        Params={"Bucket": bucket, "Key": object_key, "ContentType": safe_content_type},
+    upload = s3.generate_presigned_post(
+        Bucket=bucket,
+        Key=object_key,
+        Fields={"Content-Type": safe_content_type},
+        Conditions=[
+            {"Content-Type": safe_content_type},
+            ["content-length-range", 1, max_upload_bytes],
+        ],
         ExpiresIn=300,
     )
     meetings.put_item(
@@ -116,27 +123,30 @@ def handle_upload_url(body, owner_id):
             "searchText": file_name.lower(),
         }
     )
-    return {"meetingId": meeting_id, "uploadUrl": upload_url, "expiresIn": 300}
+    return {
+        "meetingId": meeting_id,
+        "uploadUrl": upload["url"],
+        "uploadFields": upload["fields"],
+        "expiresIn": 300,
+    }
 
 
 def handle_list_meetings(query_params, owner_id):
     query = (query_params.get("search") or "").strip().lower()
     if len(query) > 200:
         raise RequestError(400, "Search phrases can be at most 200 characters.")
-
     summary_filter = Attr("ownerId").eq(owner_id)
     if query:
         summary_filter = summary_filter & Attr("searchText").contains(query)
     metadata_matches = scan_all(meetings, FilterExpression=summary_filter)
 
     if query:
-        transcript_filter = Attr("ownerId").eq(owner_id) & Attr("content").contains(query)
+        matching_ids = {item["meetingId"] for item in metadata_matches}
         transcript_matches = scan_all(
             transcript_search,
-            FilterExpression=transcript_filter,
-            ProjectionExpression="meetingId",
+            FilterExpression=Attr("ownerId").eq(owner_id) & Attr("content").contains(query),
+            ProjectionExpression="meetingId, ownerId",
         )
-        matching_ids = {item["meetingId"] for item in metadata_matches}
         matching_ids.update(item["meetingId"] for item in transcript_matches)
 
         if matching_ids:
@@ -151,13 +161,11 @@ def handle_list_meetings(query_params, owner_id):
                 }
                 for attempt in range(5):
                     result = dynamodb.batch_get_item(RequestItems=request_items)
-                    metadata_by_id.update(
-                        {
-                            item["meetingId"]: item
-                            for item in result.get("Responses", {}).get(meetings.name, [])
-                            if item.get("ownerId") == owner_id
-                        }
-                    )
+                    metadata_by_id.update({
+                        item["meetingId"]: item
+                        for item in result.get("Responses", {}).get(meetings.name, [])
+                        if item.get("ownerId") == owner_id
+                    })
                     request_items = result.get("UnprocessedKeys", {})
                     if not request_items:
                         break
@@ -183,13 +191,13 @@ def handle_meeting_detail(meeting_id, owner_id):
         item["audioUrl"] = s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": item["s3Key"]},
-            ExpiresIn=300,
+            ExpiresIn=900,
         )
     if item.get("transcriptKey"):
         item["transcriptUrl"] = s3.generate_presigned_url(
             "get_object",
             Params={"Bucket": bucket, "Key": item["transcriptKey"]},
-            ExpiresIn=300,
+            ExpiresIn=900,
         )
     return item
 

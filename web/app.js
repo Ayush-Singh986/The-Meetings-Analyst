@@ -10,9 +10,6 @@ const icons = {
   clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/></svg>',
   "arrow-up-right": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg>',
   filter: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10m-7 6h4"/></svg>',
-  sort: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5v14m0 0-4-4m4 4 4-4M16 19V5m0 0-4 4m4-4 4 4"/></svg>',
-  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.5 9a7 7 0 0 1 11.7-2L20 12M4 12l2.8 5a7 7 0 0 0 11.7-2"/></svg>',
-  diagram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Z"/><path d="m4.5 7.8 7.5 4.4 7.5-4.4M12 12.2V21"/></svg>',
   audio: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4m4-8v12m4-15v18m4-13v8m4-11v14"/></svg>',
 };
 
@@ -88,23 +85,20 @@ const sampleMeetings = [
 ];
 
 const state = {
-  apiUrl: sessionStorage.getItem("briefly-api-url") || "",
-  token: sessionStorage.getItem("briefly-api-token") || "",
-  connected: false,
-  view: "overview",
-  filter: "all",
-  sort: "newest",
-  chartDays: 7,
-  chartRangeFilter: null,
-  query: "",
-  meetings: sampleMeetings,
-  visibleCount: 5,
-  searchRequest: 0,
-  searchTimer: null,
-  apiUrl: window.BRIEFLY_CONFIG?.apiUrl || "",
+  config: window.BRIEFLY_CONFIG || {},
   accessToken: sessionStorage.getItem("briefly-access-token") || "",
   refreshToken: sessionStorage.getItem("briefly-refresh-token") || "",
   tokenExpiresAt: Number(sessionStorage.getItem("briefly-token-expires-at") || 0),
+  connected: false,
+  view: "overview",
+  filter: "all",
+  query: "",
+  meetings: sampleMeetings,
+  activityDays: 7,
+  selectedActivityDate: "",
+  visibleCount: 5,
+  searchRequest: 0,
+  searchTimer: null,
 };
 
 const elements = {
@@ -136,8 +130,8 @@ function showToast(message, isError = false) {
 function openModal(modal) {
   modal.hidden = false;
   document.body.style.overflow = "hidden";
-  const firstInput = modal.querySelector("input");
-  if (firstInput) window.setTimeout(() => firstInput.focus(), 30);
+  const firstControl = modal.querySelector("input, button:not([hidden])");
+  if (firstControl) window.setTimeout(() => firstControl.focus(), 30);
 }
 
 function closeModal(modal) {
@@ -152,17 +146,18 @@ function setConnection(connected) {
   const pill = document.querySelector("#connection-status");
   pill.classList.toggle("is-connected", connected);
   pill.lastElementChild.textContent = connected ? "Private workspace" : "Sample workspace";
+  document.querySelector("#signin-button").hidden = connected;
   document.querySelector("#signout-button").hidden = !connected;
+  document.querySelector("#sample-button").textContent = connected ? "Switch to sample data" : "Use sample data";
+  document.querySelector("#settings-description").textContent = connected
+    ? "You are signed in. Your meetings and transcripts are scoped to this Cognito account."
+    : "Sign in with your organization account to access private meeting recordings, summaries, and transcripts.";
 }
 
-function authConfig() {
-  return window.BRIEFLY_CONFIG || {};
-}
-
-function randomToken(length = 64) {
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  return base64Url(bytes);
+function authDomain() {
+  const domain = state.config.userPoolDomain;
+  if (!domain) throw new Error("Cognito sign-in is not configured for this dashboard.");
+  return domain.startsWith("https://") ? domain : `https://${domain}`;
 }
 
 function base64Url(bytes) {
@@ -171,102 +166,121 @@ function base64Url(bytes) {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-function decodeJwt(token) {
-  try {
-    const encoded = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-    return JSON.parse(decodeURIComponent(Array.from(atob(encoded), (character) => (
-      `%${character.charCodeAt(0).toString(16).padStart(2, "0")}`
-    )).join("")));
-  } catch {
-    return {};
+async function beginSignIn() {
+  if (!window.isSecureContext || !window.crypto?.subtle) {
+    throw new Error("Secure sign-in requires opening the dashboard over HTTPS.");
   }
+  const verifier = base64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const stateToken = base64Url(crypto.getRandomValues(new Uint8Array(24)));
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
+  const challenge = base64Url(new Uint8Array(digest));
+  sessionStorage.setItem("briefly-pkce-verifier", verifier);
+  sessionStorage.setItem("briefly-oauth-state", stateToken);
+  const authorize = new URL(`${authDomain()}/oauth2/authorize`);
+  authorize.search = new URLSearchParams({
+    response_type: "code",
+    client_id: state.config.userPoolClientId,
+    redirect_uri: state.config.dashboardUrl || window.location.origin + window.location.pathname,
+    scope: "openid email profile",
+    state: stateToken,
+    code_challenge_method: "S256",
+    code_challenge: challenge,
+  });
+  window.location.assign(authorize);
 }
 
 function clearSession() {
-  ["briefly-access-token", "briefly-refresh-token", "briefly-token-expires-at", "briefly-oauth-state", "briefly-oauth-verifier"]
-    .forEach((key) => sessionStorage.removeItem(key));
+  ["briefly-access-token", "briefly-refresh-token", "briefly-token-expires-at",
+    "briefly-pkce-verifier", "briefly-oauth-state"].forEach((key) => sessionStorage.removeItem(key));
   state.accessToken = "";
   state.refreshToken = "";
   state.tokenExpiresAt = 0;
-  state.meetings = sampleMeetings;
-  state.query = "";
-  elements.search.value = "";
-  setConnection(false);
 }
 
-async function exchangeCodeForSession(code, verifier) {
-  const config = authConfig();
-  const response = await fetch(`https://${config.userPoolDomain}.auth.${config.region}.amazoncognito.com/oauth2/token`, {
+async function exchangeAuthorizationCode(code, returnedState) {
+  const expectedState = sessionStorage.getItem("briefly-oauth-state");
+  const verifier = sessionStorage.getItem("briefly-pkce-verifier");
+  sessionStorage.removeItem("briefly-oauth-state");
+  sessionStorage.removeItem("briefly-pkce-verifier");
+  if (!expectedState || returnedState !== expectedState || !verifier) {
+    throw new Error("Sign-in could not be verified. Please try again.");
+  }
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    client_id: state.config.userPoolClientId,
+    code,
+    redirect_uri: state.config.dashboardUrl || window.location.origin + window.location.pathname,
+    code_verifier: verifier,
+  });
+  const response = await fetch(`${authDomain()}/oauth2/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "authorization_code",
-      client_id: config.userPoolClientId,
-      code,
-      redirect_uri: config.dashboardUrl,
-      code_verifier: verifier,
-    }),
+    body,
   });
-  const result = await response.json();
-  if (!response.ok || !result.access_token || !result.refresh_token) {
-    throw new Error(result.error_description || result.error || "Secure sign-in could not be completed.");
+  const tokens = await response.json();
+  if (!response.ok || !tokens.access_token || !tokens.refresh_token) {
+    throw new Error(tokens.error_description || tokens.error || "Cognito could not complete sign-in.");
   }
-  state.accessToken = result.access_token;
-  state.refreshToken = result.refresh_token;
-  state.tokenExpiresAt = Date.now() + result.expires_in * 1000;
-  sessionStorage.setItem("briefly-access-token", state.accessToken);
-  sessionStorage.setItem("briefly-refresh-token", state.refreshToken);
-  sessionStorage.setItem("briefly-token-expires-at", String(state.tokenExpiresAt));
-  sessionStorage.removeItem("briefly-oauth-state");
-  sessionStorage.removeItem("briefly-oauth-verifier");
-  window.history.replaceState(null, "", window.location.pathname);
-  return result.id_token || "";
+  saveTokens(tokens);
 }
 
-async function refreshSession() {
-  if (!state.refreshToken) {
-    clearSession();
-    return false;
-  }
-  const config = authConfig();
-  const response = await fetch(`https://${config.userPoolDomain}.auth.${config.region}.amazoncognito.com/oauth2/token`, {
+function saveTokens(tokens) {
+  state.accessToken = tokens.access_token;
+  state.refreshToken = tokens.refresh_token || state.refreshToken;
+  state.tokenExpiresAt = Date.now() + Math.max(0, Number(tokens.expires_in) || 0) * 1000;
+  sessionStorage.setItem("briefly-access-token", state.accessToken);
+  if (state.refreshToken) sessionStorage.setItem("briefly-refresh-token", state.refreshToken);
+  sessionStorage.setItem("briefly-token-expires-at", String(state.tokenExpiresAt));
+}
+
+async function refreshAccessToken() {
+  if (!state.refreshToken) throw new Error("Your session has expired. Please sign in again.");
+  const response = await fetch(`${authDomain()}/oauth2/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       grant_type: "refresh_token",
-      client_id: config.userPoolClientId,
+      client_id: state.config.userPoolClientId,
       refresh_token: state.refreshToken,
     }),
   });
-  if (!response.ok) {
+  const tokens = await response.json();
+  if (!response.ok || !tokens.access_token) {
     clearSession();
-    return false;
+    throw new Error("Your session has expired. Please sign in again.");
   }
-  const result = await response.json();
-  state.accessToken = result.access_token;
-  state.tokenExpiresAt = Date.now() + (result.expires_in || 3600) * 1000;
-  sessionStorage.setItem("briefly-access-token", state.accessToken);
-  sessionStorage.setItem("briefly-token-expires-at", String(state.tokenExpiresAt));
-  return true;
+  saveTokens(tokens);
 }
 
-async function apiRequest(path, options = {}, retry = true) {
+async function ensureAccessToken() {
   if (!state.accessToken || !state.refreshToken) {
-    throw new Error("Sign in to your private workspace to continue.");
+    throw new Error("Sign in to your workspace before continuing.");
   }
-  if (state.tokenExpiresAt && Date.now() >= state.tokenExpiresAt - 60000) {
-    const refreshed = await refreshSession();
-    if (!refreshed) throw new Error("Your session expired. Sign in again to continue.");
-  }
+  if (state.tokenExpiresAt <= Date.now() + 60_000) await refreshAccessToken();
+  return state.accessToken;
+}
+
+async function endSignIn() {
+  const logoutUrl = new URL(`${authDomain()}/logout`);
+  logoutUrl.search = new URLSearchParams({
+    client_id: state.config.userPoolClientId,
+    logout_uri: state.config.dashboardUrl || window.location.origin + window.location.pathname,
+  });
+  clearSession();
+  state.meetings = sampleMeetings;
+  setConnection(false);
+  closeModal(elements.settingsModal);
+  await loadMeetings();
+  window.location.assign(logoutUrl);
+}
+
+async function apiRequest(path, options = {}) {
   const headers = new Headers(options.headers || {});
-  headers.set("Authorization", `Bearer ${state.accessToken}`);
+  headers.set("Authorization", `Bearer ${await ensureAccessToken()}`);
   if (options.body && !headers.has("content-type")) {
     headers.set("Content-Type", "application/json");
   }
-  const result = await fetch(`${state.apiUrl}${path}`, { ...options, headers });
-  if (result.status === 401 && retry && await refreshSession()) {
-    return apiRequest(path, options, false);
-  }
+  const result = await fetch(`${state.config.apiUrl}${path}`, { ...options, headers });
   if (!result.ok) {
     let message = `The workspace returned an error (${result.status}).`;
     try {
@@ -305,32 +319,28 @@ function sampleSearchText(meeting) {
   ].join(" ").toLowerCase();
 }
 
+function localDateKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function filteredMeetings() {
   let meetings = state.meetings;
+  if (state.selectedActivityDate) {
+    meetings = meetings.filter((meeting) => {
+      const date = new Date(meeting.createdAt);
+      return !Number.isNaN(date.getTime()) && localDateKey(date) === state.selectedActivityDate;
+    });
+  }
   if (state.view === "decisions") {
     meetings = meetings.filter((meeting) => (meeting.actionItems || []).length > 0);
   }
   if (state.filter !== "all") {
-    meetings = meetings.filter((meeting) => state.filter === "PROCESSING"
-      ? meeting.status === "PROCESSING" || meeting.status === "UPLOADING"
-      : meeting.status === state.filter);
+    meetings = meetings.filter((meeting) => meeting.status === state.filter);
   }
   if (state.query && !state.connected) {
     const phrase = state.query.toLowerCase();
     meetings = meetings.filter((meeting) => sampleSearchText(meeting).includes(phrase));
   }
-  if (state.chartRangeFilter) {
-    meetings = meetings.filter((meeting) => {
-      const time = new Date(meeting.createdAt).getTime();
-      return Number.isFinite(time)
-        && time >= state.chartRangeFilter.start
-        && time < state.chartRangeFilter.end;
-    });
-  }
-  meetings = [...meetings].sort((left, right) => {
-    const difference = new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
-    return state.sort === "newest" ? -difference : difference;
-  });
   return meetings;
 }
 
@@ -397,50 +407,38 @@ function renderMetrics() {
 
 function renderActivityChart() {
   const now = new Date();
-  const bucketCount = state.chartDays === 7 ? 7 : state.chartDays === 30 ? 6 : 9;
-  const daysPerBucket = state.chartDays / bucketCount;
-  const start = new Date(now);
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - state.chartDays + 1);
   const days = [];
-  for (let index = 0; index < bucketCount; index += 1) {
-    const bucketStart = new Date(start);
-    bucketStart.setDate(bucketStart.getDate() + index * daysPerBucket);
-    const bucketEnd = new Date(start);
-    bucketEnd.setDate(bucketEnd.getDate() + (index + 1) * daysPerBucket);
+  for (let offset = state.activityDays - 1; offset >= 0; offset -= 1) {
+    const date = new Date(now);
+    date.setDate(now.getDate() - offset);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
     const count = state.meetings.filter((meeting) => {
       const created = new Date(meeting.createdAt);
-      return !Number.isNaN(created.getTime()) && created >= bucketStart && created < bucketEnd;
+      return !Number.isNaN(created.getTime())
+        && `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, "0")}-${String(created.getDate()).padStart(2, "0")}` === key;
     }).length;
-    days.push({ date: bucketStart, end: bucketEnd, count, today: index === bucketCount - 1 });
+    days.push({ date, dateKey: localDateKey(date), count, today: offset === 0 });
   }
   const maximum = Math.max(4, Math.ceil(Math.max(...days.map((day) => day.count)) / 4) * 4);
-  const chartLabels = [maximum, maximum * .75, maximum * .5, maximum * .25, 0]
+  document.querySelector(".chart-y-labels").innerHTML = [maximum, maximum * .75, maximum * .5, maximum * .25, 0]
     .map((value) => `<span>${Number.isInteger(value) ? value : Math.round(value)}</span>`).join("");
-  document.querySelector(".chart-y-labels").innerHTML = chartLabels;
-  const labels = days.map((day) => `${day.date.toLocaleDateString([], { month: "short", day: "numeric" })} ${day.count}`).join(", ");
-  document.querySelector("#chart-bars").setAttribute("aria-label", `Meetings in the last ${state.chartDays} days: ${labels}`);
-  document.querySelector("#chart-bars").innerHTML = days.map((day) => {
+  const labels = days.map((day) => `${day.date.toLocaleDateString([], { weekday: "long" })} ${day.count}`).join(", ");
+  const bars = document.querySelector("#chart-bars");
+  bars.style.setProperty("--day-count", String(days.length));
+  bars.classList.toggle("is-month-view", state.activityDays === 30);
+  bars.setAttribute("aria-label", `Meetings in the last ${state.activityDays} days: ${labels}`);
+  bars.innerHTML = days.map((day) => {
     const percent = Math.max(day.count ? 5 : 0, (day.count / maximum) * 100);
-    const label = state.chartDays === 7
-      ? day.date.toLocaleDateString([], { weekday: "short" })
-      : day.date.toLocaleDateString([], { month: "short", day: "numeric" });
-    const startLabel = day.date.toLocaleDateString([], { month: "short", day: "numeric" });
-    const endLabel = new Date(day.end.getTime() - 1).toLocaleDateString([], { month: "short", day: "numeric" });
-    return `<button type="button" class="chart-column${day.today ? " today" : ""}${day.count === 0 ? " quiet" : ""}"
-      data-range-start="${day.date.getTime()}" data-range-end="${day.end.getTime()}"
-      aria-label="${startLabel}${state.chartDays > 7 ? ` through ${endLabel}` : ""}: ${day.count} meetings. Filter meeting list.">
+    const label = state.activityDays === 30
+      ? day.date.toLocaleDateString([], { day: "numeric" })
+      : day.date.toLocaleDateString([], { weekday: "short" });
+    const pressed = state.selectedActivityDate === day.dateKey;
+    return `<button class="chart-column${day.today ? " today" : ""}${day.count === 0 ? " quiet" : ""}${pressed ? " selected" : ""}" type="button" data-activity-date="${day.dateKey}" aria-pressed="${pressed}" aria-label="${day.date.toLocaleDateString([], { dateStyle: "full" })}: ${day.count} ${day.count === 1 ? "meeting" : "meetings"}">
       <span class="bar-value">${day.count}</span>
       <i style="--bar:${percent}%"></i>
       <span class="bar-label">${label}</span>
     </button>`;
   }).join("");
-  document.querySelector("#chart-range").value = String(state.chartDays);
-  const clearDate = document.querySelector("#clear-date-filter");
-  clearDate.hidden = !state.chartRangeFilter;
-  if (state.chartRangeFilter) {
-    clearDate.textContent = `Date: ${state.chartRangeFilter.label} ×`;
-  }
 }
 
 function renderMeetings() {
@@ -455,16 +453,6 @@ function renderMeetings() {
   elements.loadMore.hidden = filtered.length <= visible.length;
   renderMetrics();
   renderActivityChart();
-  const counts = {
-    all: state.meetings.length,
-    READY: state.meetings.filter((meeting) => meeting.status === "READY").length,
-    PROCESSING: state.meetings.filter((meeting) => meeting.status === "PROCESSING" || meeting.status === "UPLOADING").length,
-    FAILED: state.meetings.filter((meeting) => meeting.status === "FAILED").length,
-  };
-  document.querySelector("#filter-all-count").textContent = counts.all;
-  document.querySelector("#filter-ready-count").textContent = counts.READY;
-  document.querySelector("#filter-processing-count").textContent = counts.PROCESSING;
-  document.querySelector("#filter-failed-count").textContent = counts.FAILED;
 }
 
 function updateView(view) {
@@ -482,7 +470,12 @@ function updateView(view) {
     decisions: ["Decisions & actions", "Open follow-ups", "Decisions and next steps captured in your meetings."],
     search: ["Search", "Search meetings", "Find a decision, a deadline, or something someone said."],
   };
-  const [page, heading, description] = labels[view] || labels.overview;
+  let [page, heading, description] = labels[view] || labels.overview;
+  if (view === "meetings" && state.selectedActivityDate) {
+    const selectedDate = new Date(`${state.selectedActivityDate}T00:00:00`);
+    heading = `Meetings on ${selectedDate.toLocaleDateString([], { month: "short", day: "numeric" })}`;
+    description = "Selected from the meeting activity chart. Select that bar again to clear the date filter.";
+  }
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   document.querySelector("#breadcrumb-current").textContent = page;
@@ -523,10 +516,6 @@ async function loadMeetings(query = "") {
     if (requestNumber !== state.searchRequest) return;
     if (state.meetings.length) elements.list.innerHTML = loadingText;
     else elements.list.innerHTML = `<div class="loading-row">${escapeHtml(error.message || "Could not load meetings.")}</div>`;
-    if (!state.accessToken) {
-      setConnection(false);
-      openModal(elements.settingsModal);
-    }
     showToast(error.message || "Could not load meetings.", true);
   }
 }
@@ -607,11 +596,10 @@ async function uploadFiles(files) {
           fileSize: file.size,
         }),
       });
-      const uploadResponse = await fetch(result.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
+      const form = new FormData();
+      Object.entries(result.uploadFields || {}).forEach(([key, value]) => form.append(key, value));
+      form.append("file", file);
+      const uploadResponse = await fetch(result.uploadUrl, { method: "POST", body: form });
       if (!uploadResponse.ok) {
         throw new Error(`S3 could not upload ${file.name}. Please try again.`);
       }
@@ -643,74 +631,8 @@ function setFilter(filter) {
     PROCESSING: "Processing",
     FAILED: "Needs attention",
   };
-  document.querySelector("#filter-button").innerHTML = `${icons.filter}<span>${escapeHtml(labels[next] || labels.all)}</span><span class="filter-chevron" aria-hidden="true">⌄</span>`;
-  document.querySelector("#filter-button").setAttribute("aria-expanded", "false");
-  document.querySelector("#filter-menu").hidden = true;
-  document.querySelectorAll("[data-status-filter]").forEach((option) => {
-    option.setAttribute("aria-checked", String(option.dataset.statusFilter === next));
-  });
+  document.querySelector("#filter-button").innerHTML = `${icons.filter}${escapeHtml(labels[next] || labels.all)}<span class="filter-chevron" aria-hidden="true">⌄</span>`;
   renderMeetings();
-}
-
-function beginSecureSignIn() {
-  const config = authConfig();
-  if (!config.apiUrl || !config.userPoolClientId || !config.userPoolDomain || !config.region || !config.dashboardUrl) {
-    showToast("Deploy the AWS workspace to enable secure account sign-in.", true);
-    return;
-  }
-  const verifier = randomToken(48);
-  const oauthState = randomToken(24);
-  sessionStorage.setItem("briefly-oauth-verifier", verifier);
-  sessionStorage.setItem("briefly-oauth-state", oauthState);
-  crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)).then((digest) => {
-    const parameters = new URLSearchParams({
-      response_type: "code",
-      client_id: config.userPoolClientId,
-      redirect_uri: config.dashboardUrl,
-      scope: "openid email profile",
-      code_challenge: base64Url(new Uint8Array(digest)),
-      code_challenge_method: "S256",
-      state: oauthState,
-    });
-    window.location.assign(`https://${config.userPoolDomain}.auth.${config.region}.amazoncognito.com/oauth2/authorize?${parameters}`);
-  }).catch(() => showToast("Your browser could not start a secure sign-in.", true));
-}
-
-async function finishSecureSignIn() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get("code");
-  if (!code) {
-    const authError = params.get("error_description") || params.get("error");
-    if (authError) {
-      window.history.replaceState(null, "", window.location.pathname);
-      showToast(authError, true);
-    }
-    return;
-  }
-  const expectedState = sessionStorage.getItem("briefly-oauth-state");
-  const returnedState = params.get("state");
-  const verifier = sessionStorage.getItem("briefly-oauth-verifier");
-  if (!expectedState || expectedState !== returnedState || !verifier) {
-    window.history.replaceState(null, "", window.location.pathname);
-    clearSession();
-    showToast("Sign-in could not be verified. Start again to protect your account.", true);
-    return;
-  }
-  try {
-    const idToken = await exchangeCodeForSession(code, verifier);
-    const claims = decodeJwt(idToken);
-    const email = claims.email || "Signed-in member";
-    document.querySelector(".profile-copy strong").textContent = email;
-    document.querySelector(".profile-avatar").textContent = initialsFor(email.split("@")[0]);
-    setConnection(true);
-    closeModal(elements.settingsModal);
-    await loadMeetings();
-    showToast("Your private workspace is ready.");
-  } catch (error) {
-    clearSession();
-    showToast(error.message || "Secure sign-in could not be completed.", true);
-    openModal(elements.settingsModal);
-  }
 }
 
 document.querySelectorAll("[data-icon]").forEach((node) => {
@@ -755,84 +677,49 @@ document.querySelector("#load-more").addEventListener("click", () => {
   state.visibleCount += 10;
   renderMeetings();
 });
-document.querySelector("#filter-button").addEventListener("click", () => {
-  const menu = document.querySelector("#filter-menu");
-  menu.hidden = !menu.hidden;
-  document.querySelector("#filter-button").setAttribute("aria-expanded", String(!menu.hidden));
-});
-document.querySelectorAll("[data-status-filter]").forEach((option) => {
-  option.addEventListener("click", () => setFilter(option.dataset.statusFilter));
-});
-document.querySelector("#chart-range").addEventListener("change", (event) => {
-  state.chartDays = Number(event.target.value);
-  state.chartRangeFilter = null;
-  renderMeetings();
+document.querySelector("#activity-range").addEventListener("change", (event) => {
+  state.activityDays = Number(event.target.value) === 30 ? 30 : 7;
+  renderActivityChart();
 });
 document.querySelector("#chart-bars").addEventListener("click", (event) => {
-  const bar = event.target.closest("[data-range-start]");
+  const bar = event.target.closest("[data-activity-date]");
   if (!bar) return;
-  const start = Number(bar.dataset.rangeStart);
-  const end = Number(bar.dataset.rangeEnd);
-  const dateOptions = { month: "short", day: "numeric" };
-  const label = `${new Date(start).toLocaleDateString([], dateOptions)}${state.chartDays === 7 ? "" : ` – ${new Date(end - 1).toLocaleDateString([], dateOptions)}`}`;
-  state.chartRangeFilter = { start, end, label };
-  state.visibleCount = 50;
-  renderMeetings();
-  document.querySelector("#meetings-section").scrollIntoView({ behavior: "smooth", block: "start" });
+  state.selectedActivityDate = state.selectedActivityDate === bar.dataset.activityDate ? "" : bar.dataset.activityDate;
+  updateView("meetings");
 });
-document.querySelector("#clear-date-filter").addEventListener("click", () => {
-  state.chartRangeFilter = null;
-  renderMeetings();
-});
-document.querySelector("#sort-button").addEventListener("click", () => {
-  state.sort = state.sort === "newest" ? "oldest" : "newest";
-  document.querySelector("#sort-label").textContent = state.sort === "newest" ? "Newest first" : "Oldest first";
-  document.querySelector("#sort-button").title = state.sort === "newest" ? "Sort meetings by oldest first" : "Sort meetings by newest first";
-  renderMeetings();
-});
-document.querySelector("#refresh-button").addEventListener("click", async () => {
-  if (state.connected) {
-    await loadMeetings(state.query);
-    showToast("Your meeting list is up to date.");
-  } else {
-    renderMeetings();
-    showToast("Sample meetings refreshed.");
-  }
-});
-document.addEventListener("click", (event) => {
-  if (!event.target.closest(".filter-wrap")) {
-    document.querySelector("#filter-menu").hidden = true;
-    document.querySelector("#filter-button").setAttribute("aria-expanded", "false");
-  }
+document.querySelector("#filter-button").addEventListener("click", () => {
+  const options = ["all", "READY", "PROCESSING", "FAILED"];
+  setFilter(options[(options.indexOf(state.filter) + 1) % options.length]);
 });
 document.querySelector("#meeting-list").addEventListener("click", (event) => {
   const row = event.target.closest("[data-meeting-id]");
   if (row) showMeeting(row.dataset.meetingId);
 });
-document.querySelector("#connect-button").addEventListener("click", beginSecureSignIn);
-document.querySelector("#disconnect-button").addEventListener("click", () => {
+document.querySelector("#signin-button").addEventListener("click", async () => {
+  const error = document.querySelector("#settings-error");
+  error.hidden = true;
+  try {
+    await beginSignIn();
+  } catch (signInError) {
+    error.textContent = signInError.message || "Could not start secure sign-in.";
+    error.hidden = false;
+  }
+});
+document.querySelector("#signout-button").addEventListener("click", endSignIn);
+document.querySelector("#sample-button").addEventListener("click", async () => {
+  if (state.connected) {
+    await endSignIn();
+    return;
+  }
   clearSession();
   state.meetings = sampleMeetings;
-  state.chartRangeFilter = null;
-  setFilter("all");
+  state.query = "";
+  state.selectedActivityDate = "";
+  elements.search.value = "";
+  setConnection(false);
   closeModal(elements.settingsModal);
   updateView("overview");
   showToast("Sample workspace restored.");
-});
-document.querySelector("#signout-button").addEventListener("click", () => {
-  const config = authConfig();
-  clearSession();
-  if (config.userPoolDomain && config.region && config.userPoolClientId && config.dashboardUrl) {
-    const logout = new URL(
-      `https://${config.userPoolDomain}.auth.${config.region}.amazoncognito.com/logout`,
-    );
-    logout.searchParams.set("client_id", config.userPoolClientId);
-    logout.searchParams.set("logout_uri", config.dashboardUrl);
-    window.location.assign(logout);
-  } else {
-    closeModal(elements.settingsModal);
-    showToast("You have signed out.");
-  }
 });
 
 const dropTarget = document.querySelector(".page-content");
@@ -849,16 +736,53 @@ dropTarget.addEventListener("drop", (event) => {
   selectFiles(event.dataTransfer.files);
 });
 
-setConnection(false);
-document.querySelector("#today-label").textContent = new Date().toLocaleDateString("en-US", {
+async function initializeDashboard() {
+  const callback = new URL(window.location.href);
+  const code = callback.searchParams.get("code");
+  const returnedState = callback.searchParams.get("state");
+  const authError = callback.searchParams.get("error_description") || callback.searchParams.get("error");
+  if (code || authError) {
+    window.history.replaceState({}, document.title, callback.pathname);
+    if (authError) {
+      clearSession();
+      showToast("Cognito sign-in was not completed.", true);
+    } else {
+      try {
+        await exchangeAuthorizationCode(code, returnedState);
+      } catch (error) {
+        clearSession();
+        showToast(error.message || "Sign-in failed.", true);
+      }
+    }
+  }
+  setConnection(false);
+  if (state.config.apiUrl && state.config.userPoolClientId && state.config.userPoolDomain) {
+    document.querySelector("#signin-button").disabled = false;
+  } else {
+    document.querySelector("#signin-button").disabled = true;
+    document.querySelector("#settings-description").textContent =
+      "Sample data is available now. Deploy the AWS stack to enable secure workspace sign-in.";
+  }
+  document.querySelector("#today-label").textContent = new Date().toLocaleDateString("en-US", {
   weekday: "long",
   month: "long",
   day: "numeric",
 }).toUpperCase();
-renderMeetings();
-finishSecureSignIn();
-if (state.accessToken && state.refreshToken && state.apiUrl) {
-  state.meetings = [];
-  setConnection(true);
-  loadMeetings();
+  renderMeetings();
+  if (state.accessToken && state.refreshToken && state.config.apiUrl) {
+    try {
+      await ensureAccessToken();
+      state.meetings = [];
+      setConnection(true);
+      await loadMeetings();
+    } catch (error) {
+      clearSession();
+      setConnection(false);
+      showToast(error.message || "Your session has expired.", true);
+    }
+  } else {
+    clearSession();
+  }
 }
+
+initializeDashboard();

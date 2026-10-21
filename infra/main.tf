@@ -21,11 +21,6 @@ provider "aws" {
   region = var.aws_region
 }
 
-provider "aws" {
-  alias  = "cloudfront"
-  region = "us-east-1"
-}
-
 data "aws_caller_identity" "current" {}
 data "aws_partition" "current" {}
 
@@ -52,22 +47,6 @@ resource "aws_s3_bucket" "meetings" {
   bucket        = "${local.name}-meetings-${random_id.suffix.hex}"
   force_destroy = false
   tags          = local.tags
-}
-
-resource "aws_s3_bucket_ownership_controls" "meetings" {
-  bucket = aws_s3_bucket.meetings.id
-
-  rule {
-    object_ownership = "BucketOwnerEnforced"
-  }
-}
-
-resource "aws_s3_bucket_ownership_controls" "web" {
-  bucket = aws_s3_bucket.web.id
-
-  rule {
-    object_ownership = "BucketOwnerEnforced"
-  }
 }
 
 resource "aws_s3_bucket" "web" {
@@ -104,70 +83,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "meetings" {
   }
 }
 
-resource "aws_kms_key" "meetings" {
-  description             = "${local.name} recordings and transcripts"
-  enable_key_rotation     = true
-  deletion_window_in_days = 30
-  tags                    = local.tags
-}
-
-resource "aws_kms_alias" "meetings" {
-  name          = "alias/${local.name}-meetings"
-  target_key_id = aws_kms_key.meetings.key_id
-}
-
-resource "aws_kms_key" "web" {
-  description             = "${local.name} dashboard assets"
-  enable_key_rotation     = true
-  deletion_window_in_days = 30
-  tags                    = local.tags
-}
-
-resource "aws_kms_alias" "web" {
-  name          = "alias/${local.name}-web"
-  target_key_id = aws_kms_key.web.key_id
-}
-
-resource "aws_kms_key" "events" {
-  description             = "${local.name} event and notification payloads"
-  enable_key_rotation     = true
-  deletion_window_in_days = 30
-  tags                    = local.tags
-}
-
-resource "aws_kms_alias" "events" {
-  name          = "alias/${local.name}-events"
-  target_key_id = aws_kms_key.events.key_id
-}
-
-resource "aws_kms_key_policy" "events" {
-  key_id = aws_kms_key.events.key_id
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "EnableAccountIamPermissions"
-        Effect    = "Allow"
-        Principal = { AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root" }
-        Action    = "kms:*"
-        Resource  = "*"
-      },
-      {
-        Sid       = "AllowSnsUseForReadyNotifications"
-        Effect    = "Allow"
-        Principal = { Service = "sns.amazonaws.com" }
-        Action    = ["kms:Decrypt", "kms:GenerateDataKey*"]
-        Resource  = "*"
-        Condition = {
-          StringEquals = {
-            "kms:EncryptionContext:aws:sns:topicArn" = "arn:${data.aws_partition.current.partition}:sns:${var.aws_region}:${data.aws_caller_identity.current.account_id}:${local.name}-meeting-ready"
-          }
-        }
-      }
-    ]
-  })
-}
-
 resource "aws_s3_bucket_server_side_encryption_configuration" "web" {
   bucket = aws_s3_bucket.web.id
 
@@ -178,22 +93,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "web" {
     }
     bucket_key_enabled = true
   }
-}
-
-resource "aws_s3_bucket_policy" "meetings_tls" {
-  bucket = aws_s3_bucket.meetings.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Sid       = "DenyInsecureTransport"
-      Effect    = "Deny"
-      Principal = "*"
-      Action    = "s3:*"
-      Resource  = [aws_s3_bucket.meetings.arn, "${aws_s3_bucket.meetings.arn}/*"]
-      Condition = { Bool = { "aws:SecureTransport" = "false" } }
-    }]
-  })
 }
 
 resource "aws_s3_bucket_versioning" "meetings" {
@@ -209,7 +108,7 @@ resource "aws_s3_bucket_cors_configuration" "meetings" {
 
   cors_rule {
     allowed_headers = ["*"]
-    allowed_methods = ["GET", "PUT", "HEAD"]
+    allowed_methods = ["GET", "POST", "HEAD"]
     allowed_origins = ["https://${aws_cloudfront_distribution.web.domain_name}"]
     expose_headers  = ["ETag"]
     max_age_seconds = 3600
@@ -217,160 +116,44 @@ resource "aws_s3_bucket_cors_configuration" "meetings" {
 }
 
 resource "aws_s3_object" "index" {
-  bucket                 = aws_s3_bucket.web.id
-  key                    = "index.html"
-  source                 = "${path.module}/../web/index.html"
-  etag                   = filemd5("${path.module}/../web/index.html")
-  content_type           = "text/html; charset=utf-8"
-  server_side_encryption = "aws:kms"
-  kms_key_id             = aws_kms_key.web.arn
-  cache_control          = "no-cache, no-store, must-revalidate"
+  bucket       = aws_s3_bucket.web.id
+  key          = "index.html"
+  source       = "${path.module}/../web/index.html"
+  etag         = filemd5("${path.module}/../web/index.html")
+  content_type = "text/html; charset=utf-8"
+  cache_control = "no-cache, no-store, must-revalidate"
 }
 
 resource "aws_s3_object" "styles" {
-  bucket                 = aws_s3_bucket.web.id
-  key                    = "styles.css"
-  source                 = "${path.module}/../web/styles.css"
-  etag                   = filemd5("${path.module}/../web/styles.css")
-  content_type           = "text/css; charset=utf-8"
-  server_side_encryption = "aws:kms"
-  kms_key_id             = aws_kms_key.web.arn
-  cache_control          = "public, max-age=300"
+  bucket        = aws_s3_bucket.web.id
+  key           = "styles.css"
+  source        = "${path.module}/../web/styles.css"
+  etag          = filemd5("${path.module}/../web/styles.css")
+  content_type  = "text/css; charset=utf-8"
+  cache_control = "public, max-age=300"
 }
 
 resource "aws_s3_object" "app" {
-  bucket                 = aws_s3_bucket.web.id
-  key                    = "app.js"
-  source                 = "${path.module}/../web/app.js"
-  etag                   = filemd5("${path.module}/../web/app.js")
-  content_type           = "text/javascript; charset=utf-8"
-  server_side_encryption = "aws:kms"
-  kms_key_id             = aws_kms_key.web.arn
-  cache_control          = "public, max-age=300"
-}
-
-resource "aws_s3_object" "architecture_html" {
-  bucket                 = aws_s3_bucket.web.id
-  key                    = "architecture.html"
-  source                 = "${path.module}/../web/architecture.html"
-  etag                   = filemd5("${path.module}/../web/architecture.html")
-  content_type           = "text/html; charset=utf-8"
-  server_side_encryption = "aws:kms"
-  kms_key_id             = aws_kms_key.web.arn
-  cache_control          = "public, max-age=300"
-}
-
-resource "aws_s3_object" "architecture_css" {
-  bucket                 = aws_s3_bucket.web.id
-  key                    = "architecture.css"
-  source                 = "${path.module}/../web/architecture.css"
-  etag                   = filemd5("${path.module}/../web/architecture.css")
-  content_type           = "text/css; charset=utf-8"
-  server_side_encryption = "aws:kms"
-  kms_key_id             = aws_kms_key.web.arn
-  cache_control          = "public, max-age=300"
-}
-
-resource "aws_s3_object" "architecture_js" {
-  bucket                 = aws_s3_bucket.web.id
-  key                    = "architecture.js"
-  source                 = "${path.module}/../web/architecture.js"
-  etag                   = filemd5("${path.module}/../web/architecture.js")
-  content_type           = "text/javascript; charset=utf-8"
-  server_side_encryption = "aws:kms"
-  kms_key_id             = aws_kms_key.web.arn
-  cache_control          = "public, max-age=300"
-}
-
-resource "aws_cognito_user_pool" "workspace" {
-  name                     = "${local.name}-users"
-  auto_verified_attributes = ["email"]
-  mfa_configuration        = "OPTIONAL"
-  deletion_protection      = "ACTIVE"
-
-  software_token_mfa_configuration {
-    enabled = true
-  }
-
-  password_policy {
-    minimum_length                   = 12
-    require_lowercase                = true
-    require_numbers                  = true
-    require_symbols                  = true
-    require_uppercase                = true
-    temporary_password_validity_days = 1
-    password_history_size            = 8
-  }
-
-  account_recovery_setting {
-    recovery_mechanism {
-      name     = "verified_email"
-      priority = 1
-    }
-  }
-
-  user_attribute_update_settings {
-    attributes_require_verification_before_update = ["email"]
-  }
-
-  schema {
-    name                     = "email"
-    attribute_data_type      = "String"
-    required                 = true
-    mutable                  = true
-    developer_only_attribute = false
-    string_attribute_constraints {
-      min_length = 5
-      max_length = 2048
-    }
-  }
-
-  tags = local.tags
-}
-
-resource "aws_cognito_user_pool_domain" "workspace" {
-  domain       = "${var.project_name}-${random_id.suffix.hex}"
-  user_pool_id = aws_cognito_user_pool.workspace.id
-}
-
-resource "aws_cognito_user_pool_client" "dashboard" {
-  name                                 = "${local.name}-dashboard"
-  user_pool_id                         = aws_cognito_user_pool.workspace.id
-  generate_secret                      = false
-  prevent_user_existence_errors        = "ENABLED"
-  enable_token_revocation              = true
-  allowed_oauth_flows_user_pool_client = true
-  allowed_oauth_flows                  = ["code"]
-  allowed_oauth_scopes                 = ["openid", "email", "profile"]
-  supported_identity_providers         = ["COGNITO"]
-  callback_urls                        = ["https://${aws_cloudfront_distribution.web.domain_name}/"]
-  logout_urls                          = ["https://${aws_cloudfront_distribution.web.domain_name}/"]
-  access_token_validity                = 60
-  id_token_validity                    = 60
-  refresh_token_validity               = 5
-  token_validity_units {
-    access_token  = "minutes"
-    id_token      = "minutes"
-    refresh_token = "days"
-  }
+  bucket        = aws_s3_bucket.web.id
+  key           = "app.js"
+  source        = "${path.module}/../web/app.js"
+  etag          = filemd5("${path.module}/../web/app.js")
+  content_type  = "text/javascript; charset=utf-8"
+  cache_control = "public, max-age=300"
 }
 
 resource "aws_s3_object" "config" {
-  bucket                 = aws_s3_bucket.web.id
-  key                    = "config.js"
-  content_type           = "text/javascript; charset=utf-8"
-  server_side_encryption = "aws:kms"
-  kms_key_id             = aws_kms_key.web.arn
-  cache_control          = "no-cache, no-store, must-revalidate"
-  content                = <<-CONFIG
-    window.BRIEFLY_CONFIG = ${jsonencode({
-      apiUrl           = aws_apigatewayv2_api.http.api_endpoint
-      region           = var.aws_region
-      userPoolClientId = aws_cognito_user_pool_client.dashboard.id
-      userPoolDomain   = aws_cognito_user_pool_domain.workspace.domain
-      dashboardUrl     = "https://${aws_cloudfront_distribution.web.domain_name}/"
-    })};
-  CONFIG
+  bucket        = aws_s3_bucket.web.id
+  key           = "config.js"
+  content_type  = "text/javascript; charset=utf-8"
+  cache_control = "no-cache, no-store, must-revalidate"
+  content = "window.BRIEFLY_CONFIG = ${jsonencode({
+    apiUrl          = aws_apigatewayv2_api.http.api_endpoint
+    region          = var.aws_region
+    userPoolClientId = aws_cognito_user_pool_client.dashboard.id
+    userPoolDomain   = aws_cognito_user_pool_domain.workspace.domain
+    dashboardUrl    = "https://${aws_cloudfront_distribution.web.domain_name}/"
+  })};"
 }
 
 resource "aws_cloudfront_origin_access_control" "web" {
@@ -381,114 +164,12 @@ resource "aws_cloudfront_origin_access_control" "web" {
   signing_protocol                  = "sigv4"
 }
 
-resource "aws_cloudfront_response_headers_policy" "web" {
-  name = "${local.name}-security-headers"
-
-  security_headers_config {
-    content_security_policy {
-      content_security_policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ${aws_apigatewayv2_api.http.api_endpoint} https://${aws_cognito_user_pool_domain.workspace.domain}.auth.${var.aws_region}.amazoncognito.com https://${aws_s3_bucket.meetings.bucket}.s3.${var.aws_region}.amazonaws.com; img-src 'self' data:; media-src 'self' https://${aws_s3_bucket.meetings.bucket}.s3.${var.aws_region}.amazonaws.com; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self' https://${aws_cognito_user_pool_domain.workspace.domain}.auth.${var.aws_region}.amazoncognito.com; upgrade-insecure-requests"
-      override                  = true
-    }
-
-    content_type_options {
-      override = true
-    }
-
-    frame_options {
-      frame_option = "DENY"
-      override     = true
-    }
-
-    referrer_policy {
-      referrer_policy = "strict-origin-when-cross-origin"
-      override        = true
-    }
-
-    strict_transport_security {
-      access_control_max_age_sec = 63072000
-      include_subdomains         = true
-      preload                    = true
-      override                   = true
-    }
-
-    xss_protection {
-      mode_block = true
-      protection = true
-      override   = true
-    }
-  }
-}
-
-resource "aws_wafv2_web_acl" "edge" {
-  provider    = aws.cloudfront
-  name        = "${local.name}-edge"
-  description = "Managed exploit protections and per-IP request limits for the public dashboard."
-  scope       = "CLOUDFRONT"
-
-  default_action {
-    allow {}
-  }
-
-  rule {
-    name     = "RateLimit"
-    priority = 0
-
-    action {
-      block {}
-    }
-
-    statement {
-      rate_based_statement {
-        limit                 = 2000
-        aggregate_key_type    = "IP"
-        evaluation_window_sec = 300
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "${local.name}-edge-rate"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  rule {
-    name     = "AWSManagedCommonRules"
-    priority = 1
-
-    override_action {
-      none {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        name        = "AWSManagedRulesCommonRuleSet"
-        vendor_name = "AWS"
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "${local.name}-edge-common"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  visibility_config {
-    cloudwatch_metrics_enabled = true
-    metric_name                = "${local.name}-edge"
-    sampled_requests_enabled   = true
-  }
-
-  tags = local.tags
-}
-
 resource "aws_cloudfront_distribution" "web" {
   enabled             = true
   default_root_object = "index.html"
   price_class         = "PriceClass_100"
-  tags                = local.tags
   web_acl_id          = aws_wafv2_web_acl.edge.arn
+  tags                = local.tags
 
   origin {
     domain_name              = aws_s3_bucket.web.bucket_regional_domain_name
@@ -500,9 +181,9 @@ resource "aws_cloudfront_distribution" "web" {
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]
     target_origin_id       = "web-${aws_s3_bucket.web.id}"
-    response_headers_policy_id = aws_cloudfront_response_headers_policy.web.id
     viewer_protocol_policy = "redirect-to-https"
     compress                = true
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.web.id
 
     forwarded_values {
       query_string = false
@@ -520,7 +201,6 @@ resource "aws_cloudfront_distribution" "web" {
     geo_restriction {
       restriction_type = "none"
     }
-
   }
 
   viewer_certificate {
@@ -552,38 +232,29 @@ resource "aws_s3_bucket_policy" "web" {
         Principal = "*"
         Action    = "s3:*"
         Resource  = [aws_s3_bucket.web.arn, "${aws_s3_bucket.web.arn}/*"]
-        Condition = { Bool = { "aws:SecureTransport" = "false" } }
+        Condition = {
+          Bool = { "aws:SecureTransport" = "false" }
+        }
       }
     ]
   })
 }
 
-resource "aws_kms_key_policy" "web" {
-  key_id = aws_kms_key.web.key_id
+resource "aws_s3_bucket_policy" "meetings_tls" {
+  bucket = aws_s3_bucket.meetings.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "EnableAccountIamPermissions"
-        Effect    = "Allow"
-        Principal = { AWS = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root" }
-        Action    = "kms:*"
-        Resource  = "*"
-      },
-      {
-        Sid       = "AllowCloudFrontToDecryptDashboardAssets"
-        Effect    = "Allow"
-        Principal = { Service = "cloudfront.amazonaws.com" }
-        Action    = "kms:Decrypt"
-        Resource  = "*"
-        Condition = {
-          StringEquals = {
-            "AWS:SourceArn" = aws_cloudfront_distribution.web.arn
-          }
-        }
+    Statement = [{
+      Sid       = "DenyInsecureTransport"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+      Resource  = [aws_s3_bucket.meetings.arn, "${aws_s3_bucket.meetings.arn}/*"]
+      Condition = {
+        Bool = { "aws:SecureTransport" = "false" }
       }
-    ]
+    }]
   })
 }
 
@@ -613,7 +284,8 @@ resource "aws_dynamodb_table" "meetings" {
   }
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.meetings.arn
   }
 
   point_in_time_recovery {
@@ -640,7 +312,8 @@ resource "aws_dynamodb_table" "transcript_search" {
   }
 
   server_side_encryption {
-    enabled = true
+    enabled     = true
+    kms_key_arn = aws_kms_key.meetings.arn
   }
 
   tags = local.tags
@@ -715,10 +388,7 @@ resource "aws_iam_role_policy" "api" {
       {
         Effect   = "Allow"
         Action   = ["s3:GetObject"]
-        Resource = [
-          "${aws_s3_bucket.meetings.arn}/uploads/*",
-          "${aws_s3_bucket.meetings.arn}/transcripts/*",
-        ]
+        Resource = "${aws_s3_bucket.meetings.arn}/transcripts/*"
       },
       {
         Effect   = "Allow"
@@ -732,7 +402,7 @@ resource "aws_iam_role_policy" "api" {
       },
       {
         Effect   = "Allow"
-        Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
         Resource = aws_kms_key.meetings.arn
       }
     ]
@@ -792,13 +462,8 @@ resource "aws_iam_role_policy" "pipeline" {
       },
       {
         Effect   = "Allow"
-        Action   = ["kms:GenerateDataKey", "kms:Decrypt"]
-        Resource = aws_kms_key.events.arn
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt"]
-        Resource = aws_kms_key.meetings.arn
+        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = [aws_kms_key.meetings.arn, aws_kms_key.events.arn]
       }
     ]
   })
@@ -837,7 +502,7 @@ resource "aws_iam_role_policy" "transcribe" {
       },
       {
         Effect   = "Allow"
-        Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Action   = ["kms:Decrypt", "kms:Encrypt", "kms:GenerateDataKey*"]
         Resource = aws_kms_key.meetings.arn
       },
     ]
@@ -865,7 +530,6 @@ resource "aws_lambda_function" "api" {
   tags = local.tags
 
   reserved_concurrent_executions = 20
-
   depends_on = [aws_iam_role_policy_attachment.api_logs, aws_iam_role_policy.api]
 }
 
@@ -894,7 +558,6 @@ resource "aws_lambda_function" "pipeline" {
   tags = local.tags
 
   reserved_concurrent_executions = 10
-
   depends_on = [aws_iam_role_policy_attachment.pipeline_logs, aws_iam_role_policy.pipeline]
 }
 
@@ -964,7 +627,7 @@ resource "aws_apigatewayv2_api" "http" {
   name          = "${local.name}-api"
   protocol_type = "HTTP"
   cors_configuration {
-    allow_origins = ["*"]
+    allow_origins = ["https://${aws_cloudfront_distribution.web.domain_name}"]
     allow_methods = ["GET", "POST", "OPTIONS"]
     allow_headers = ["authorization", "content-type"]
     max_age       = 3600
@@ -993,9 +656,9 @@ resource "aws_apigatewayv2_integration" "api" {
 }
 
 resource "aws_apigatewayv2_route" "default" {
-  api_id    = aws_apigatewayv2_api.http.id
-  route_key = "$default"
-  target    = "integrations/${aws_apigatewayv2_integration.api.id}"
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "$default"
+  target             = "integrations/${aws_apigatewayv2_integration.api.id}"
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
 }

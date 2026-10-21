@@ -4,6 +4,8 @@ Briefly turns meeting recordings into searchable transcripts and useful follow-u
 
 The dashboard works immediately with sample meetings. Connect an AWS deployment to upload and process real recordings.
 
+> **Current deployment:** the original bearer-token walkthrough and configuration below are retained as project history. The deployed infrastructure now uses Amazon Cognito OAuth sign-in with PKCE; follow [Current security and deployment notes](#current-security-and-deployment-notes) for the active setup.
+
 ## How the project works
 
 People in every business often have meetings, take notes by hand, and try to remember what was actually decided. Briefly automates that process: meeting recordings are uploaded to Amazon S3 and processed one at a time. An S3 event invokes AWS Lambda, which starts Amazon Transcribe. Transcribe produces a timestamped transcript with speaker labels. When transcription finishes, another Lambda sends the transcript to Amazon Bedrock to extract the important points: key decisions, action items, and the main topics discussed. Meeting summaries and metadata are saved in DynamoDB; the complete transcript and its searchable chunks are stored in S3 and DynamoDB. Amazon SNS can notify subscribers when a transcript is ready.
@@ -12,25 +14,29 @@ Type a phrase such as “budget approval” in the dashboard to find matching me
 
 ## Architecture
 
+![3D isometric architecture diagram of the Briefly AI Meeting Analyst](docs/architecture.svg)
+
+The 3D isometric system map above is part of this README and renders on GitHub. It shows the full recording-to-summary flow and the security controls around each stage.
+
 ```text
-Browser (CloudFront)
-  ├── HTTPS API + bearer token ──> API Gateway ──> upload/search Lambda
-  └── presigned S3 upload ──────> private recordings bucket
-                                           │ S3 ObjectCreated
-                                           ▼
-                                      Transcribe starter Lambda
-                                           │
-                          Amazon Transcribe (speaker labels)
-                                           │ completion EventBridge event
-                                           ▼
-                                      processor Lambda
-                                      ├── Bedrock (summary, decisions, actions)
-                                      ├── S3 (full timestamped transcript)
-                                      ├── DynamoDB (meeting records + transcript search chunks)
-                                      └── SNS (ready notification)
+Browser dashboard (CloudFront + WAF)
+  ├── Cognito OAuth / PKCE ──> API Gateway JWT authorizer ──> API Lambda
+  └── short-lived presigned POST ──> private, owner-scoped S3 upload
+                                             │ S3 ObjectCreated
+                                             ▼
+                                        Starter Lambda
+                                             │
+                            Amazon Transcribe (timestamps + speakers)
+                                             │ EventBridge completion
+                                             ▼
+                                        Processor Lambda
+                                        ├── Bedrock (summary, decisions, actions)
+                                        ├── S3 (full timestamped transcript)
+                                        ├── DynamoDB (owner-scoped meetings + search chunks)
+                                        └── SNS (ready notification)
 ```
 
-Terraform also provisions a private static-assets bucket behind CloudFront, the API, least-privilege Lambda roles, encryption, CORS, and optional email notifications. EventBridge routes completed or failed Transcribe jobs to the processor; SNS sends the ready notification. The API requires a bearer token; the dashboard asks for the token after deployment and keeps it in the current browser session only. Terraform marks the token output as sensitive, but Terraform state and Lambda configuration contain it: protect both.
+Terraform also provisions a private static-assets bucket behind CloudFront, the API, least-privilege Lambda roles, encryption, CORS, and optional email notifications. EventBridge routes completed or failed Transcribe jobs to the processor; SNS sends the ready notification. The older bearer-token setup instructions later in this README describe the initial implementation and are retained for history; they are not used by the current Cognito-based deployment.
 
 ## Deploy
 
@@ -112,15 +118,40 @@ Review the plan before confirming. The recordings bucket has deletion protection
 backend/   Python Lambda handlers for the API and asynchronous pipeline
 infra/     Terraform configuration, variables, and deployment outputs
 web/       Responsive dashboard (plain HTML, CSS, and JavaScript)
+docs/      README-embedded 3D isometric architecture illustration
 ```
 
 ## Project 4: AI Meeting Analyst
 
-Business teams often meet, write notes by hand, and still have to rely on memory to recall what was decided. Briefly is an automatic note-taking system that turns meeting recordings into searchable transcripts and intelligent summaries.
+Every business worker has meetings, writes notes manually, and tries to remember what was actually decided. There is no automatic note-taking system right now that records meetings and makes AI summaries, so this project builds one that converts meeting recordings into searchable transcripts and intelligent summaries.
 
-For this first version, recordings are uploaded manually to Amazon S3. An S3 event starts AWS Lambda, which sends the audio to Amazon Transcribe. The aim is for Transcribe to handle multiple speakers and background noise while creating a timestamped transcript with speaker labels. A second Lambda sends that transcript to Amazon Bedrock, which extracts the key decisions, action steps, and main topics. Meeting details and searchable transcript chunks are stored in DynamoDB, and Amazon SNS can notify subscribers when a transcript is ready.
+The first version starts simply: a recording is downloaded from a meeting platform and manually uploaded to Amazon S3. S3 events allow the files to be processed one by one by AWS Lambda. Once triggered, Lambda sends the audio to Amazon Transcribe, which can handle multiple speakers and background noise and produces a full transcript with timestamps and speaker labels. Lambda then sends the transcript to Amazon Bedrock, which extracts the important information: key decisions, action steps, and the main topics discussed. Meeting data is stored in DynamoDB, and Amazon SNS can send a notification when a transcript is ready.
 
-The dashboard searches summaries and transcript text, so a phrase such as “budget approval” can take you back to the meeting, the person who made the decision, and any deadline the team agreed on. Zoom and Microsoft Teams recording APIs and webhooks are a possible next step; automatic platform uploads are not included in this version.
+The search function queries DynamoDB: enter a phrase such as “budget approval” to find matching meetings, then review who made the decision and what deadline the team agreed on. Results are available immediately in the dashboard. Recordings are still uploaded manually to S3; automatically integrating Zoom or Microsoft Teams APIs and webhooks to save recordings as soon as meetings end is a future challenge and is not included in this version.
+
+### Project brief (as provided)
+
+Business workers often have meetings manually, write notes, and try to remember what was actually decided. There is no automatic note-taking system right now that records and makes AI summaries, but we're going to build our own and make it way better.
+
+We are building a system that can automatically convert meeting recordings into searchable transcripts and intelligent summaries.
+
+For this project, we're going to start very simple. You're going to download a recording from a platform that you like and take meetings, and then upload it to S3.
+
+From there, we'll use S3 to form the files and process them one by one. As soon as they're ready, we're going to set up Lambda.
+
+Once triggered, it sends the audio to Amazon Transcribe. AWS's speech-to-text service is smart enough to handle multiple speakers and filter out any background noise, giving us a full transcript with timestamps. And here is where it gets interesting: we then send that transcript to Amazon Bedrock, and it asks it to extract the important stuff, like the key decisions, the action steps, and the main topics discussed.
+
+Everything then gets stored in DynamoDB, and then we can use SNS to send notifications when transcripts are ready.
+
+We then need to build a simple search function that queries DynamoDB. Type in budget approval and it searches through all your stored transcripts and summaries to find matching meetings.
+
+And the best part is that it's immediate, and we can easily search back and see who made the important decision on what deadline that you guys have agreed on.
+
+Right now, we're still manually uploading meeting recordings to S3.
+
+So, one of the next challenges will be figuring out how to automatically upload and integrate this project with Zoom or Microsoft Teams.
+
+So, we can add it to the API integration and platform webhooks to auto-save recordings directly to S3 the moment the meeting ends.
 
 ## Current security and deployment notes
 
@@ -166,12 +197,12 @@ Prerequisites are Terraform 1.5+, AWS CLI credentials authorized to create the r
 
    This provisions billable AWS resources. CloudFront can take several minutes to become available. Terraform outputs include `dashboard_url`, `api_url`, the Cognito user-pool/client details, and the storage resource names.
 
-4. Open the `dashboard_url`, choose **Sign in securely**, register with a verified email, and complete the email verification step. Enable authenticator-app MFA from the account's Cognito security settings if desired. New users register through the Cognito-hosted sign-in page.
+4. Open the `dashboard_url`, choose **Sign in securely**, register with a verified email, and complete the email verification step. The user pool supports optional authenticator-app MFA; administrators should configure enrollment or enforcement using the Cognito controls appropriate for their deployment. The dashboard does not include a separate MFA enrollment screen. New users register through the Cognito-hosted sign-in page.
 
 5. Upload a supported recording from the dashboard. Processing is asynchronous; refresh the meeting list after a few minutes to see the transcript, decisions, summary, action items, and ready status. Optional email alerts require confirming the SNS subscription email.
 
 Protect the Terraform state: it records infrastructure details and may contain generated configuration. Do not publish it or commit `terraform.tfvars`. To tear down, run `terraform destroy` from `infra`; because the recordings bucket is versioned and protected from force deletion, intentionally empty all object versions before removing it.
 
-### Interactive architecture
+### Architecture diagram
 
-Open **System architecture** from the dashboard navigation or open `web/architecture.html` directly. The isometric service map supports selecting components for explanations, playing or pausing the end-to-end data flow, dragging to rotate, scrolling to zoom, and using the camera controls. Terraform publishes the architecture page and its CSS/JavaScript alongside the dashboard.
+The 3D architecture diagram is embedded in this README as [`docs/architecture.svg`](docs/architecture.svg). It is documentation rather than a dashboard page; the deployment serves the dashboard UI only.

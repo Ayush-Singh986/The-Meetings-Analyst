@@ -24,9 +24,26 @@ class FakeWriter:
 class FakeTable:
     def __init__(self):
         self.writer = FakeWriter()
+        self.item = None
+        self.updated = False
 
     def batch_writer(self, **_kwargs):
         return self.writer
+
+    def get_item(self, Key):
+        return {"Item": self.item} if self.item else {}
+
+    def update_item(self, **_kwargs):
+        self.updated = True
+
+
+class FakeS3:
+    def __init__(self):
+        self.head_calls = 0
+
+    def head_object(self, **_kwargs):
+        self.head_calls += 1
+        return {"ContentLength": 1024}
 
 
 def load_pipeline():
@@ -118,19 +135,18 @@ class PipelineTests(unittest.TestCase):
 
     def test_search_index_chunks_long_transcripts_with_overlap(self):
         meeting_id = "meeting-123"
-        owner_id = "12345678-1234-1234-1234-123456789abc"
         transcript = ("A" * 15999) + " Budget approval confirmed."
         table = FakeTable()
         self.pipeline.transcript_search = table
 
-        self.pipeline.index_transcript(meeting_id, owner_id, transcript)
+        self.pipeline.index_transcript(meeting_id, "workspace-owner", transcript)
 
         self.assertEqual(len(table.writer.items), 2)
         self.assertEqual(table.writer.items[0]["chunkId"], 0)
         self.assertEqual(table.writer.items[1]["chunkId"], 1)
         self.assertIn("budget approval", table.writer.items[1]["content"])
-        self.assertEqual(table.writer.items[0]["ownerId"], owner_id)
         self.assertEqual(table.writer.items[0]["meetingId"], meeting_id)
+        self.assertEqual(table.writer.items[0]["ownerId"], "workspace-owner")
 
     def test_eventbridge_transcribe_completion_reaches_processor(self):
         event = {
@@ -155,7 +171,7 @@ class PipelineTests(unittest.TestCase):
     def test_s3_recording_event_starts_transcription(self):
         record = {
             "eventSource": "aws:s3",
-            "s3": {"object": {"key": "uploads/12345678-1234-1234-1234-123456789abc.wav"}},
+            "s3": {"object": {"key": "uploads/workspace-owner/12345678-1234-1234-1234-123456789abc.wav"}},
         }
         original = self.pipeline.start_transcription
         calls = []
@@ -167,6 +183,27 @@ class PipelineTests(unittest.TestCase):
 
         self.assertEqual(result, {"started": 1})
         self.assertEqual(calls, [record])
+
+    def test_s3_event_cannot_access_another_owners_meeting(self):
+        meeting_id = "12345678-1234-1234-1234-123456789abc"
+        record = {
+            "s3": {"object": {"key": f"uploads/owner-two/{meeting_id}.wav"}},
+        }
+        table = FakeTable()
+        table.item = {
+            "meetingId": meeting_id,
+            "ownerId": "owner-one",
+            "s3Key": f"uploads/owner-one/{meeting_id}.wav",
+            "status": "UPLOADING",
+        }
+        s3 = FakeS3()
+        self.pipeline.meetings = table
+        self.pipeline.s3 = s3
+
+        self.pipeline.start_transcription(record)
+
+        self.assertEqual(s3.head_calls, 0)
+        self.assertFalse(table.updated)
 
 
 if __name__ == "__main__":
