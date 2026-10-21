@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#101827" />
+    <meta name="description" content="Explore the live Briefly AI Meeting Analyst architecture: select services, follow the data flow, and orbit the 3D system map." />
+    <title>Live architecture — Briefly</title>
+    <link rel="stylesheet" href="./architecture.css" />
+    <script src="./architecture.js" defer></script>
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="https://github.com/Ayush-Singh986/The-Meetings-Analyst#readme" aria-label="Briefly project documentation">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span>briefly<span class="brand-dot">.</span></span>
+      </a>
+      <a class="back-link" href="https://github.com/Ayush-Singh986/The-Meetings-Analyst">Project repository <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <main class="page">
+      <section class="intro">
+        <div>
+          <p class="eyebrow"><span></span> SYSTEM ARCHITECTURE · INTERACTIVE VIEW</p>
+          <h1>From conversation<br />to <span>clarity.</span></h1>
+          <p class="intro-copy">Explore the path from a private recording upload to searchable meeting intelligence. Select a service, follow the live data flow, or orbit the system map.</p>
+        </div>
+        <div class="status-pill"><i></i> AWS · EVENT-DRIVEN · OWNER-SCOPED</div>
+      </section>
+
+      <section class="architecture-card" aria-label="Interactive architecture explorer">
+        <div class="toolbar">
+          <div class="map-heading"><span class="eyebrow-small">THE MEETING PIPELINE</span><span class="interaction-hint">Drag to orbit · scroll to zoom · select a service</span></div>
+          <div class="controls" aria-label="Diagram controls">
+            <button id="flow-toggle" class="flow-button" type="button" aria-pressed="false"><span aria-hidden="true">▶</span><span>Play data flow</span></button>
+            <span class="control-divider" aria-hidden="true"></span>
+            <button class="camera-button" id="rotate-left" type="button" aria-label="Rotate left" title="Rotate left">↶</button>
+            <button class="camera-button" id="rotate-right" type="button" aria-label="Rotate right" title="Rotate right">↷</button>
+            <button class="camera-button" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out">−</button>
+            <button class="camera-button" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">+</button>
+            <button class="reset-button" id="reset-camera" type="button">Reset view</button>
+          </div>
+        </div>
+        <div class="canvas-wrap" id="canvas-wrap" tabindex="0" aria-label="3D architecture map. Drag to orbit. Use arrow keys to rotate, plus or minus to zoom, and Home to reset.">
+          <object id="architecture-art" data="./architecture.svg" type="image/svg+xml" aria-label="Interactive 3D isometric diagram of the Briefly meeting analyst pipeline"></object>
+          <div class="canvas-hint"><span class="drag-icon" aria-hidden="true">⤢</span> ORBIT THE SYSTEM MAP</div>
+        </div>
+        <div class="map-legend">
+          <span><i class="legend-dot ingest"></i> Secure request &amp; recording flow</span>
+          <span><i class="legend-dot analysis"></i> Analysis &amp; notification</span>
+          <span class="legend-owner"><i class="legend-check">✓</i> Cognito identity scopes every meeting</span>
+        </div>
+        <section class="service-detail" aria-live="polite" aria-atomic="true">
+          <div class="detail-icon" id="detail-icon">01</div>
+          <div class="detail-copy">
+            <div class="detail-eyebrow" id="detail-category">THE EXPERIENCE · 01 / 11</div>
+            <h2 id="detail-title">Browser dashboard</h2>
+            <p id="detail-description">Users upload recordings and search summaries and timestamped transcripts from the workspace.</p>
+          </div>
+          <div class="detail-security"><span>SECURITY CONTROL</span><strong id="detail-security-value">OAuth 2.0 · PKCE sign-in</strong></div>
+        </section>
+      </section>
+
+      <section class="service-index" aria-label="Choose a service">
+        <div class="index-title"><span class="eyebrow-small">EXPLORE COMPONENTS</span><span>11 services · one secure workflow</span></div>
+        <div class="service-buttons" id="service-buttons"></div>
+      </section>
+
+      <footer class="page-footer">
+        <span>Briefly · AI Meeting Analyst</span>
+        <span>Manual uploads today · Zoom and Teams webhooks are future work</span>
+        <a href="https://github.com/Ayush-Singh986/The-Meetings-Analyst#readme">Back to README ↑</a>
+      </footer>
+    </main>
+  </body>
+</html>

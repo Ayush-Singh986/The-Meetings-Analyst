@@ -14,9 +14,11 @@ Type a phrase such as “budget approval” in the dashboard to find matching me
 
 ## Architecture
 
-![3D isometric architecture diagram of the Briefly AI Meeting Analyst](docs/architecture.svg)
+<a href="https://ayush-singh986.github.io/The-Meetings-Analyst/architecture.html">
+  <img src="docs/architecture.svg" alt="3D isometric architecture diagram of the Briefly AI Meeting Analyst — click to launch the interactive version" width="100%" />
+</a>
 
-The 3D isometric system map above is part of this README and renders on GitHub. It shows the full recording-to-summary flow and the security controls around each stage.
+The diagram preview renders directly in this README. **[Launch the live interactive 3D architecture →](https://ayush-singh986.github.io/The-Meetings-Analyst/architecture.html)** to orbit the system, select services for security and implementation details, and animate the end-to-end data flow. GitHub displays README images as static content and does not execute interactive JavaScript inside the page.
 
 ```text
 Browser dashboard (CloudFront + WAF)
@@ -205,4 +207,4 @@ Protect the Terraform state: it records infrastructure details and may contain g
 
 ### Architecture diagram
 
-The 3D architecture diagram is embedded in this README as [`docs/architecture.svg`](docs/architecture.svg). It is documentation rather than a dashboard page; the deployment serves the dashboard UI only.
+The static architecture preview is [`docs/architecture.svg`](docs/architecture.svg); its interactive companion is [`docs/architecture.html`](docs/architecture.html). GitHub renders the static preview in the README and hosts the interactive page through GitHub Pages. For a fork, enable **Settings → Pages → Build and deployment → GitHub Actions**. The workflow in [`.github/workflows/pages.yml`](.github/workflows/pages.yml) publishes `docs/` whenever it changes on `main`. After the first successful deployment, the live diagram is available at `https://<owner>.github.io/<repository>/architecture.html`.

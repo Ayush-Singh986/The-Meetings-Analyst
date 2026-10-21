@@ -34,12 +34,12 @@
     <path d="m94 523 620-358 628 362-622 359Z" fill="none" stroke="#526a8c" stroke-opacity=".5" stroke-width="2"/>
   </g>
   <g fill="none" stroke="#78d6bd" stroke-width="3" stroke-dasharray="7 9" marker-end="url(#arrow)" opacity=".95">
-    <path d="M270 330H388"/><path d="M544 330H662"/><path d="M818 330H936"/>
-    <path d="M1014 454V483"/><path d="M944 522H810"/><path d="M670 522H536"/><path d="M396 522H262"/>
-    <path d="M192 645C192 658 280 658 330 670"/><path d="M412 700H522"/><path d="M682 700H796"/>
+    <path class="flow-path" d="M270 330H388"/><path class="flow-path" d="M544 330H662"/><path class="flow-path" d="M818 330H936"/>
+    <path class="flow-path" d="M1014 454V483"/><path class="flow-path" d="M944 522H810"/><path class="flow-path" d="M670 522H536"/><path class="flow-path" d="M396 522H262"/>
+    <path class="flow-path" d="M192 645C192 658 280 658 330 670"/><path class="flow-path" d="M412 700H522"/><path class="flow-path" d="M682 700H796"/>
   </g>
   <g fill="none" stroke="#ad9df3" stroke-width="2.5" stroke-dasharray="4 8" marker-end="url(#arrowAlt)" opacity=".85">
-    <path d="M960 733c0 38-30 52-76 52"/><path d="M1128 748c0 35-32 37-62 37"/>
+    <path class="flow-path" d="M960 733c0 38-30 52-76 52"/><path class="flow-path" d="M1128 748c0 35-32 37-62 37"/>
   </g>
   <g font-family="Inter,Segoe UI,sans-serif" font-size="9" font-weight="700" letter-spacing="1">
     <g transform="translate(258 277)"><rect width="78" height="22" rx="11" fill="#203b3a"/><text x="39" y="15" fill="#91e7cb" text-anchor="middle">HTTPS</text></g>
@@ -50,7 +50,7 @@
     <g transform="translate(690 658)"><rect width="130" height="22" rx="11" fill="#302b4b"/><text x="65" y="15" fill="#c8baff" text-anchor="middle">SUMMARY + ACTIONS</text></g>
   </g>
   <g filter="url(#shadow)" font-family="Inter,Segoe UI,sans-serif">
-    <g transform="translate(122 314)">
+    <g transform="translate(122 314)" data-component="browser" role="button" tabindex="0" aria-label="Browser dashboard, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#top)" stroke="#e5efff"/>
       <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
       <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
@@ -60,7 +60,7 @@
       <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Dashboard · upload · search</text>
       <circle cx="119" cy="89" r="4" fill="#6ce0ba"/>
     </g>
-    <g transform="translate(396 314)">
+    <g transform="translate(396 314)" data-component="edge" role="button" tabindex="0" aria-label="CloudFront and WAF, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#blue)" stroke="#e5efff"/>
       <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
       <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
@@ -70,7 +70,7 @@
       <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">HTTPS · managed rules</text>
       <circle cx="119" cy="89" r="4" fill="#6ce0ba"/>
     </g>
-    <g transform="translate(670 314)">
+    <g transform="translate(670 314)" data-component="auth" role="button" tabindex="0" aria-label="Amazon Cognito, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#violet)" stroke="#f0eaff"/>
       <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
       <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
@@ -80,7 +80,7 @@
       <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">OAuth · PKCE · optional MFA</text>
       <circle cx="119" cy="89" r="4" fill="#c6b2ff"/>
     </g>
-    <g transform="translate(944 314)">
+    <g transform="translate(944 314)" data-component="api" role="button" tabindex="0" aria-label="API Gateway, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#blue)" stroke="#e5efff"/>
       <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
       <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
@@ -89,7 +89,7 @@
       <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">JWT authorizer · throttling</text>
       <circle cx="119" cy="89" r="4" fill="#6ce0ba"/>
     </g>
-    <g transform="translate(944 507)">
+    <g transform="translate(944 507)" data-component="s3" role="button" tabindex="0" aria-label="Amazon S3, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#mint)" stroke="#ddfff3"/>
       <path d="M0 20v77l70 41V60Z" fill="#4ca989" stroke="#6ac8a7"/>
       <path d="M140 20v77L70 138V60Z" fill="#327d68" stroke="#3b967a"/>
@@ -99,7 +99,7 @@
       <text x="70" y="99" fill="#d3f5e9" font-size="10" text-anchor="middle">Private · SSE-KMS · versioned</text>
       <circle cx="119" cy="89" r="4" fill="#c8ffeb"/>
     </g>
-    <g transform="translate(670 507)">
+    <g transform="translate(670 507)" data-component="starter" role="button" tabindex="0" aria-label="Starter Lambda, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#violet)" stroke="#f0eaff"/>
       <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
       <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
@@ -108,7 +108,7 @@
       <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Validate owner · start job</text>
       <circle cx="119" cy="89" r="4" fill="#c6b2ff"/>
     </g>
-    <g transform="translate(396 507)">
+    <g transform="translate(396 507)" data-component="transcribe" role="button" tabindex="0" aria-label="Amazon Transcribe, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#blue)" stroke="#e5efff"/>
       <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
       <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
@@ -118,7 +118,7 @@
       <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Timestamps · speaker labels</text>
       <circle cx="119" cy="89" r="4" fill="#6ce0ba"/>
     </g>
-    <g transform="translate(122 507)">
+    <g transform="translate(122 507)" data-component="processor" role="button" tabindex="0" aria-label="Processor Lambda, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#violet)" stroke="#f0eaff"/>
       <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
       <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
@@ -128,7 +128,7 @@
       <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Analyze · index · notify</text>
       <circle cx="119" cy="89" r="4" fill="#c6b2ff"/>
     </g>
-    <g transform="translate(260 690)">
+    <g transform="translate(260 690)" data-component="bedrock" role="button" tabindex="0" aria-label="Amazon Bedrock, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#violet)" stroke="#f0eaff"/>
       <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
       <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
@@ -138,7 +138,7 @@
       <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Topics · decisions · actions</text>
       <circle cx="119" cy="89" r="4" fill="#c6b2ff"/>
     </g>
-    <g transform="translate(534 690)">
+    <g transform="translate(534 690)" data-component="dynamodb" role="button" tabindex="0" aria-label="Amazon DynamoDB, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#blue)" stroke="#e5efff"/>
       <path d="M0 20v77l70 41V60Z" fill="url(#front)" stroke="#8098b8"/>
       <path d="M140 20v77L70 138V60Z" fill="url(#side)" stroke="#506987"/>
@@ -148,7 +148,7 @@
       <text x="70" y="99" fill="#d6e3f3" font-size="10" text-anchor="middle">Owner-scoped records + search</text>
       <circle cx="119" cy="89" r="4" fill="#6ce0ba"/>
     </g>
-    <g transform="translate(808 690)">
+    <g transform="translate(808 690)" data-component="sns" role="button" tabindex="0" aria-label="Amazon SNS, select for details">
       <path d="m0 20 70-40 70 40-70 40Z" fill="url(#mint)" stroke="#ddfff3"/>
       <path d="M0 20v77l70 41V60Z" fill="#4ca989" stroke="#6ac8a7"/>
       <path d="M140 20v77L70 138V60Z" fill="#327d68" stroke="#3b967a"/>
