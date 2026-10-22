@@ -12,8 +12,8 @@ const components = {
     description: "Cognito verifies workspace identities. API calls use short-lived access tokens; the public OAuth client has no embedded secret.",
   },
   api: {
-    category: "AUTHENTICATED API", title: "Amazon API Gateway", security: "JWT authorizer · request throttling",
-    description: "API Gateway validates the Cognito token before invoking Lambda. The API derives the owner from the verified token, never a browser-supplied ID.",
+    category: "API & WEBHOOK INGRESS", title: "Amazon API Gateway", security: "JWT routes · signed provider callbacks · throttling",
+    description: "Dashboard API routes require a Cognito JWT. Dedicated Zoom and Teams callbacks verify provider signatures or client state, then queue recording events without trusting browser-supplied owners.",
   },
   s3: {
     category: "PRIVATE OBJECT STORAGE", title: "Amazon S3", security: "Private · SSE-KMS · versioned · TLS-only",

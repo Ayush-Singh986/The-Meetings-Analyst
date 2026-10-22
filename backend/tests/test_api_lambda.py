@@ -57,7 +57,7 @@ def load_api():
             "boto3.dynamodb": fake_dynamodb,
             "boto3.dynamodb.conditions": fake_conditions,
         },
-    ):
+    ), patch.object(sys, "path", [str(path.parent), *sys.path]):
         spec.loader.exec_module(module)
     return module, table
 
@@ -78,6 +78,22 @@ class ApiLambdaTests(unittest.TestCase):
 
         self.assertEqual(result["statusCode"], 401)
         self.assertIn("authenticated workspace account", result["body"])
+
+    def test_provider_webhook_route_is_dispatched_without_cognito_claims(self):
+        expected = {"statusCode": 202, "body": "{\"accepted\":true}"}
+        with patch.object(self.api.platform_webhooks, "handler", return_value=expected) as webhook:
+            result = self.api.handler(
+                {
+                    "requestContext": {"http": {"method": "POST"}},
+                    "rawPath": "/webhooks/zoom",
+                    "headers": {},
+                    "body": "{}",
+                },
+                None,
+            )
+
+        self.assertEqual(result, expected)
+        webhook.assert_called_once()
 
     def test_upload_post_is_scoped_and_size_limited_to_authenticated_owner(self):
         owner_id = "workspace-owner"

@@ -8,6 +8,31 @@ output "api_url" {
   value       = aws_apigatewayv2_api.http.api_endpoint
 }
 
+output "zoom_webhook_url" {
+  description = "Zoom recording.completed webhook URL."
+  value       = "${aws_apigatewayv2_api.http.api_endpoint}/webhooks/zoom"
+}
+
+output "teams_webhook_url" {
+  description = "Microsoft Graph recording notification URL."
+  value       = "${aws_apigatewayv2_api.http.api_endpoint}/webhooks/teams"
+}
+
+output "zoom_webhook_secret_arn" {
+  description = "Secrets Manager ARN for the Zoom webhook verification token."
+  value       = aws_secretsmanager_secret.zoom_webhook.arn
+}
+
+output "zoom_oauth_secret_arn" {
+  description = "Secrets Manager ARN for Zoom Server-to-Server OAuth credentials."
+  value       = aws_secretsmanager_secret.zoom_oauth.arn
+}
+
+output "teams_graph_secret_arn" {
+  description = "Secrets Manager ARN for Microsoft Graph app credentials and webhook client state."
+  value       = aws_secretsmanager_secret.teams_graph.arn
+}
+
 output "cognito_user_pool_id" {
   description = "Amazon Cognito user pool ID for workspace sign-in."
   value       = aws_cognito_user_pool.workspace.id

@@ -319,6 +319,68 @@ resource "aws_dynamodb_table" "transcript_search" {
   tags = local.tags
 }
 
+resource "aws_dynamodb_table" "integration_state" {
+  name         = "${local.name}-integration-state"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "integrationId"
+
+  attribute {
+    name = "integrationId"
+    type = "S"
+  }
+
+  server_side_encryption {
+    enabled     = true
+    kms_key_arn = aws_kms_key.meetings.arn
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  tags = local.tags
+}
+
+resource "aws_sqs_queue" "recording_events_dlq" {
+  name                      = "${local.name}-recording-events-dlq"
+  message_retention_seconds = 1209600
+  sqs_managed_sse_enabled   = true
+  tags                      = local.tags
+}
+
+resource "aws_sqs_queue" "recording_events" {
+  name                       = "${local.name}-recording-events"
+  visibility_timeout_seconds = 5400
+  message_retention_seconds  = 345600
+  sqs_managed_sse_enabled    = true
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.recording_events_dlq.arn
+    maxReceiveCount     = 3
+  })
+  tags = local.tags
+}
+
+resource "aws_secretsmanager_secret" "zoom_webhook" {
+  name                    = "${local.name}/integrations/zoom-webhook-secret"
+  description             = "Zoom webhook verification token. Set its value in Secrets Manager."
+  recovery_window_in_days = 7
+  tags                    = local.tags
+}
+
+resource "aws_secretsmanager_secret" "zoom_oauth" {
+  name                    = "${local.name}/integrations/zoom-oauth"
+  description             = "Zoom Server-to-Server OAuth JSON credentials. Set its value in Secrets Manager."
+  recovery_window_in_days = 7
+  tags                    = local.tags
+}
+
+resource "aws_secretsmanager_secret" "teams_graph" {
+  name                    = "${local.name}/integrations/teams-graph"
+  description             = "Microsoft Graph app credentials and webhook client state JSON. Set its value in Secrets Manager."
+  recovery_window_in_days = 7
+  tags                    = local.tags
+}
+
 resource "aws_sns_topic" "ready" {
   name              = "${local.name}-meeting-ready"
   kms_master_key_id = aws_kms_key.events.arn
@@ -340,6 +402,19 @@ resource "aws_iam_role" "lambda_api" {
 
 resource "aws_iam_role" "lambda_pipeline" {
   name = "${local.name}-pipeline-lambda"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+  tags = local.tags
+}
+
+resource "aws_iam_role" "lambda_recordings" {
+  name = "${local.name}-recording-integrations"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -374,6 +449,11 @@ resource "aws_iam_role_policy_attachment" "pipeline_logs" {
   policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_iam_role_policy_attachment" "recordings_logs" {
+  role       = aws_iam_role.lambda_recordings.name
+  policy_arn = "arn:${data.aws_partition.current.partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
 resource "aws_iam_role_policy" "api" {
   name = "${local.name}-api-access"
   role = aws_iam_role.lambda_api.id
@@ -382,7 +462,7 @@ resource "aws_iam_role_policy" "api" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["s3:PutObject"]
+        Action   = ["s3:PutObject", "s3:AbortMultipartUpload"]
         Resource = "${aws_s3_bucket.meetings.arn}/uploads/*"
       },
       {
@@ -403,6 +483,56 @@ resource "aws_iam_role_policy" "api" {
       {
         Effect   = "Allow"
         Action   = ["kms:Decrypt", "kms:GenerateDataKey"]
+        Resource = aws_kms_key.meetings.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = aws_sqs_queue.recording_events.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [aws_secretsmanager_secret.zoom_webhook.arn, aws_secretsmanager_secret.teams_graph.arn]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "recordings" {
+  name = "${local.name}-recording-integrations-access"
+  role = aws_iam_role.lambda_recordings.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "${aws_s3_bucket.meetings.arn}/uploads/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
+        Resource = [aws_dynamodb_table.meetings.arn, aws_dynamodb_table.integration_state.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["cognito-idp:ListUsers"]
+        Resource = aws_cognito_user_pool.workspace.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue"]
+        Resource = [aws_secretsmanager_secret.zoom_oauth.arn, aws_secretsmanager_secret.teams_graph.arn]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:ChangeMessageVisibility", "sqs:GetQueueAttributes", "sqs:GetQueueUrl"]
+        Resource = aws_sqs_queue.recording_events.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt", "kms:DescribeKey", "kms:GenerateDataKey", "kms:Encrypt"]
         Resource = aws_kms_key.meetings.arn
       }
     ]
@@ -521,9 +651,12 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      MEETINGS_BUCKET = aws_s3_bucket.meetings.bucket
-      MEETINGS_TABLE  = aws_dynamodb_table.meetings.name
-      SEARCH_TABLE    = aws_dynamodb_table.transcript_search.name
+      MEETINGS_BUCKET          = aws_s3_bucket.meetings.bucket
+      MEETINGS_TABLE           = aws_dynamodb_table.meetings.name
+      SEARCH_TABLE             = aws_dynamodb_table.transcript_search.name
+      INTEGRATION_QUEUE_URL    = aws_sqs_queue.recording_events.url
+      ZOOM_WEBHOOK_SECRET_ARN  = aws_secretsmanager_secret.zoom_webhook.arn
+      TEAMS_GRAPH_SECRET_ARN   = aws_secretsmanager_secret.teams_graph.arn
     }
   }
 
@@ -531,6 +664,69 @@ resource "aws_lambda_function" "api" {
 
   reserved_concurrent_executions = 20
   depends_on = [aws_iam_role_policy_attachment.api_logs, aws_iam_role_policy.api]
+}
+
+resource "aws_lambda_function" "recordings" {
+  function_name    = "${local.name}-recording-integrations"
+  role             = aws_iam_role.lambda_recordings.arn
+  handler          = "recording_worker.handler"
+  runtime          = "python3.12"
+  timeout          = 900
+  memory_size      = 2048
+  filename         = data.archive_file.lambda.output_path
+  source_code_hash = data.archive_file.lambda.output_base64sha256
+
+  ephemeral_storage {
+    size = 1024
+  }
+
+  environment {
+    variables = {
+      MEETINGS_BUCKET         = aws_s3_bucket.meetings.bucket
+      MEETINGS_TABLE          = aws_dynamodb_table.meetings.name
+      INTEGRATION_STATE_TABLE = aws_dynamodb_table.integration_state.name
+      USER_POOL_ID            = aws_cognito_user_pool.workspace.id
+      ZOOM_OAUTH_SECRET_ARN   = aws_secretsmanager_secret.zoom_oauth.arn
+      TEAMS_GRAPH_SECRET_ARN  = aws_secretsmanager_secret.teams_graph.arn
+      API_URL                 = aws_apigatewayv2_api.http.api_endpoint
+    }
+  }
+
+  tags = local.tags
+
+  reserved_concurrent_executions = 5
+  depends_on = [aws_iam_role_policy_attachment.recordings_logs, aws_iam_role_policy.recordings]
+}
+
+resource "aws_lambda_event_source_mapping" "recordings" {
+  event_source_arn = aws_sqs_queue.recording_events.arn
+  function_name    = aws_lambda_function.recordings.arn
+  batch_size       = 1
+  enabled          = true
+}
+
+resource "aws_cloudwatch_event_rule" "teams_subscription_renewal" {
+  name                = "${local.name}-teams-subscription-renewal"
+  description         = "Create and renew Microsoft Graph meeting recording notifications."
+  schedule_expression = "rate(12 hours)"
+  tags                = local.tags
+}
+
+resource "aws_lambda_permission" "teams_subscription_renewal" {
+  statement_id  = "AllowTeamsSubscriptionSchedule"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.recordings.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.teams_subscription_renewal.arn
+}
+
+resource "aws_cloudwatch_event_target" "teams_subscription_renewal" {
+  rule      = aws_cloudwatch_event_rule.teams_subscription_renewal.name
+  target_id = "renew-teams-recording-subscription"
+  arn       = aws_lambda_function.recordings.arn
+  input     = jsonencode({ source = "briefly.integrations", detail = { action = "renew-teams-subscription" } })
+
+  depends_on = [aws_lambda_permission.teams_subscription_renewal]
 }
 
 resource "aws_lambda_function" "pipeline" {
@@ -661,6 +857,20 @@ resource "aws_apigatewayv2_route" "default" {
   target             = "integrations/${aws_apigatewayv2_integration.api.id}"
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+}
+
+resource "aws_apigatewayv2_route" "zoom_webhook" {
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /webhooks/zoom"
+  target             = "integrations/${aws_apigatewayv2_integration.api.id}"
+  authorization_type = "NONE"
+}
+
+resource "aws_apigatewayv2_route" "teams_webhook" {
+  api_id             = aws_apigatewayv2_api.http.id
+  route_key          = "POST /webhooks/teams"
+  target             = "integrations/${aws_apigatewayv2_integration.api.id}"
+  authorization_type = "NONE"
 }
 
 resource "aws_apigatewayv2_stage" "default" {

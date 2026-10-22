@@ -10,7 +10,7 @@ The dashboard works immediately with sample meetings. Connect an AWS deployment 
 
 People in every business often have meetings, take notes by hand, and try to remember what was actually decided. Briefly automates that process: meeting recordings are uploaded to Amazon S3 and processed one at a time. An S3 event invokes AWS Lambda, which starts Amazon Transcribe. Transcribe produces a timestamped transcript with speaker labels. When transcription finishes, another Lambda sends the transcript to Amazon Bedrock to extract the important points: key decisions, action items, and the main topics discussed. Meeting summaries and metadata are saved in DynamoDB; the complete transcript and its searchable chunks are stored in S3 and DynamoDB. Amazon SNS can notify subscribers when a transcript is ready.
 
-Type a phrase such as “budget approval” in the dashboard to find matching meeting summaries **and the complete transcript text**, then review who made a decision and what deadline was agreed. Recordings are uploaded to S3 manually for now. Automatically saving recordings from Zoom or Microsoft Teams is a future integration: it will require the platform’s recording APIs and webhooks.
+Type a phrase such as “budget approval” in the dashboard to find matching meeting summaries **and the complete transcript text**, then review who made a decision and what deadline was agreed. Recordings can be uploaded manually or automatically ingested from Zoom and Microsoft Teams using signed platform notifications and their recording APIs.
 
 ## Architecture
 
@@ -24,6 +24,7 @@ The diagram preview renders directly in this README. **[Launch the live interact
 Browser dashboard (CloudFront + WAF)
   ├── Cognito OAuth / PKCE ──> API Gateway JWT authorizer ──> API Lambda
   └── short-lived presigned POST ──> private, owner-scoped S3 upload
+Zoom / Teams webhook ──> signed callback ──> SQS ──> provider recording worker ──> private S3 upload
                                              │ S3 ObjectCreated
                                              ▼
                                         Starter Lambda
@@ -98,7 +99,7 @@ Use the search box to find words in the summary or anywhere in the full transcri
 | `bedrock_model_id` | `anthropic.claude-3-haiku-20240307-v1:0` | Bedrock model used to analyze transcripts |
 | `transcribe_language_code` | `en-US` | Transcription language |
 
-The initial implementation assumes English transcription and diarizes up to ten speakers. Recordings are uploaded manually; Zoom and Microsoft Teams integrations are not included.
+The initial implementation assumes English transcription and diarizes up to ten speakers. Manual upload remains available; Zoom and Microsoft Teams recording ingestion is configured under [Platform recording integrations](#platform-recording-integrations).
 
 ## Local dashboard
 
@@ -117,7 +118,7 @@ Review the plan before confirming. The recordings bucket has deletion protection
 ## Project structure
 
 ```text
-backend/   Python Lambda handlers for the API and asynchronous pipeline
+backend/   Python Lambda handlers for the API, provider webhooks, recording worker, and pipeline
 infra/     Terraform configuration, variables, and deployment outputs
 web/       Responsive dashboard (plain HTML, CSS, and JavaScript)
 docs/      README-embedded 3D isometric architecture illustration
@@ -127,9 +128,9 @@ docs/      README-embedded 3D isometric architecture illustration
 
 Every business worker has meetings, writes notes manually, and tries to remember what was actually decided. There is no automatic note-taking system right now that records meetings and makes AI summaries, so this project builds one that converts meeting recordings into searchable transcripts and intelligent summaries.
 
-The first version starts simply: a recording is downloaded from a meeting platform and manually uploaded to Amazon S3. S3 events allow the files to be processed one by one by AWS Lambda. Once triggered, Lambda sends the audio to Amazon Transcribe, which can handle multiple speakers and background noise and produces a full transcript with timestamps and speaker labels. Lambda then sends the transcript to Amazon Bedrock, which extracts the important information: key decisions, action steps, and the main topics discussed. Meeting data is stored in DynamoDB, and Amazon SNS can send a notification when a transcript is ready.
+The first version starts simply: a recording can be downloaded from a meeting platform and manually uploaded to Amazon S3. The current deployment also supports automatic ingestion from Zoom and Microsoft Teams cloud recording webhooks. S3 events allow the files to be processed one by one by AWS Lambda. Once triggered, Lambda sends the audio to Amazon Transcribe, which can handle multiple speakers and background noise and produces a full transcript with timestamps and speaker labels. Lambda then sends the transcript to Amazon Bedrock, which extracts the important information: key decisions, action steps, and the main topics discussed. Meeting data is stored in DynamoDB, and Amazon SNS can send a notification when a transcript is ready.
 
-The search function queries DynamoDB: enter a phrase such as “budget approval” to find matching meetings, then review who made the decision and what deadline the team agreed on. Results are available immediately in the dashboard. Recordings are still uploaded manually to S3; automatically integrating Zoom or Microsoft Teams APIs and webhooks to save recordings as soon as meetings end is a future challenge and is not included in this version.
+The search function queries DynamoDB: enter a phrase such as “budget approval” to find matching meetings, then review who made the decision and what deadline the team agreed on. Results are available immediately in the dashboard. Manual S3 upload is supported, and the current deployment can also ingest Zoom and Microsoft Teams cloud recordings automatically through webhooks.
 
 ### Project brief (as provided)
 
@@ -151,7 +152,7 @@ And the best part is that it's immediate, and we can easily search back and see 
 
 Right now, we're still manually uploading meeting recordings to S3.
 
-So, one of the next challenges will be figuring out how to automatically upload and integrate this project with Zoom or Microsoft Teams.
+So, one of the next challenges will be figuring out how to automatically upload and integrate this project with Zoom or Microsoft Teams. The deployment now includes webhook-based recording ingestion for both providers; see [Platform recording integrations](#platform-recording-integrations) for setup.
 
 So, we can add it to the API integration and platform webhooks to auto-save recordings directly to S3 the moment the meeting ends.
 
@@ -162,11 +163,11 @@ This section documents the current Cognito-based deployment and supersedes the e
 ### Security layers
 
 - **Identity and session:** Amazon Cognito provides verified-email sign-in through OAuth authorization code with PKCE. The public browser client has no client secret. Access and refresh tokens are kept in the current tab's `sessionStorage`; access tokens are short-lived. Strong password rules are configured, and authenticator-app MFA is available as an optional user setting.
-- **API authorization:** API Gateway validates the Cognito JWT before invoking Lambda and applies request throttling. The API derives the user ID from the verified JWT `sub` claim; it does not accept an owner ID supplied by the browser.
+- **API authorization:** API Gateway validates the Cognito JWT for dashboard routes and applies request throttling. The dedicated public provider callbacks verify Zoom HMAC signatures or Microsoft Graph client state before queueing work. The API derives meeting ownership from the verified host email and Cognito account; it does not accept an owner ID from a webhook or browser.
 - **Account isolation:** Upload keys include the authenticated owner ID. Meeting details, summaries, and transcript search results are checked or filtered against the same owner ID before they are returned.
 - **Edge and transport:** CloudFront redirects viewers to HTTPS and adds security headers. AWS WAF managed common protections and an IP-based rate limit protect the dashboard edge. S3 bucket policies deny insecure transport.
 - **Storage and permissions:** Recording and dashboard S3 buckets are private, block public access, and use rotating KMS keys; the recordings bucket is versioned. DynamoDB enables encryption at rest and point-in-time recovery for meeting records. Lambda roles are scoped to the resources and actions each function needs, with bounded concurrency.
-- **Upload and abuse limits:** Upload links are presigned, short-lived, limited to supported audio/video extensions, and capped at 500 MB. API Gateway and WAF throttles add request-level protection.
+- **Upload and abuse limits:** Upload links are presigned, short-lived, limited to supported audio/video extensions, and capped at 500 MB. Webhook bodies are capped at 1 MB, downloaded media is restricted to HTTPS provider hosts and capped at 500 MB, and API Gateway throttles requests.
 
 These controls provide defense in depth, not a guarantee that a deployment is suitable for every regulated workload. Review AWS account permissions, data-retention requirements, Cognito MFA policy, model access, and the applicable privacy obligations before processing sensitive recordings.
 
@@ -197,13 +198,43 @@ Prerequisites are Terraform 1.5+, AWS CLI credentials authorized to create the r
    terraform apply
    ```
 
-   This provisions billable AWS resources. CloudFront can take several minutes to become available. Terraform outputs include `dashboard_url`, `api_url`, the Cognito user-pool/client details, and the storage resource names.
+   This provisions billable AWS resources. CloudFront can take several minutes to become available. Terraform outputs include `dashboard_url`, `api_url`, platform webhook URLs and secret ARNs, Cognito user-pool/client details, and storage resource names.
 
 4. Open the `dashboard_url`, choose **Sign in securely**, register with a verified email, and complete the email verification step. The user pool supports optional authenticator-app MFA; administrators should configure enrollment or enforcement using the Cognito controls appropriate for their deployment. The dashboard does not include a separate MFA enrollment screen. New users register through the Cognito-hosted sign-in page.
 
 5. Upload a supported recording from the dashboard. Processing is asynchronous; refresh the meeting list after a few minutes to see the transcript, decisions, summary, action items, and ready status. Optional email alerts require confirming the SNS subscription email.
 
 Protect the Terraform state: it records infrastructure details and may contain generated configuration. Do not publish it or commit `terraform.tfvars`. To tear down, run `terraform destroy` from `infra`; because the recordings bucket is versioned and protected from force deletion, intentionally empty all object versions before removing it.
+
+### Platform recording integrations
+
+Zoom and Teams notifications enter dedicated API Gateway routes without Cognito login; each callback is verified using the provider's webhook signature or client-state token before an event is queued. A separate worker downloads the recording with provider OAuth credentials, matches the meeting host's email to exactly one verified Cognito user, and uploads the file to that owner's private `uploads/` S3 prefix. The normal S3, Transcribe, Bedrock, DynamoDB, and SNS pipeline then processes it. Unsupported files, unmatched host accounts, and provider/API errors are retried through SQS; repeatedly failing events move to its dead-letter queue.
+
+Terraform creates the webhook endpoints and empty Secrets Manager secrets. Apply the infrastructure first, then add credentials to those secrets in **AWS Console → Secrets Manager**. Do not put provider credentials or secret values in Terraform variables or state.
+
+| Secret output | Value to store |
+| --- | --- |
+| `zoom_webhook_secret_arn` | The Zoom Event Subscriptions **Secret Token** as plain text. Use the same value when configuring the Zoom webhook. |
+| `zoom_oauth_secret_arn` | JSON for a Zoom Server-to-Server OAuth app: `{"account_id":"…","client_id":"…","client_secret":"…"}`. Grant cloud-recording read access. |
+| `teams_graph_secret_arn` | JSON for a Microsoft Entra app: `{"tenant_id":"…","client_id":"…","client_secret":"…","client_state":"…","organizer_user_ids":["…"]}`. Use a random `client_state` of 16-128 characters and include the Microsoft Entra object IDs for each organizer to subscribe (1-100). Grant and admin-consent the Microsoft Graph application permissions needed to read meeting recordings and resolve organizer identities (including `OnlineMeetingRecording.Read.All` and `User.Read.All`). |
+
+Retrieve the callback URLs and secret ARNs using:
+
+```powershell
+terraform output -raw zoom_webhook_url
+terraform output -raw teams_webhook_url
+terraform output -raw zoom_webhook_secret_arn
+terraform output -raw zoom_oauth_secret_arn
+terraform output -raw teams_graph_secret_arn
+```
+
+In the Zoom Marketplace, configure an account-level Server-to-Server OAuth app with cloud-recording read permission and an Event Subscription for **recording.completed** pointing to `zoom_webhook_url`. Enter the exact Secret Token stored in Secrets Manager. Zoom's URL-validation challenge is handled by the callback.
+
+For Teams, configure the Entra application with the Graph application permissions above and grant tenant admin consent. Include each organizer's Entra object ID in `organizer_user_ids`; the scheduled worker creates and renews each Graph recording notification subscription every 12 hours. The callback responds to Graph's validation handshake. Recordings are only added when the organizer's email resolves to exactly one confirmed Cognito account with a verified matching email. Users whose platform email differs from their Briefly login need to align those addresses before a recording can be assigned safely.
+
+After storing the Teams credentials, invoke the recording worker once with the test event `{"source":"briefly.integrations","detail":{"action":"renew-teams-subscription"}}` to create subscriptions immediately. The EventBridge schedule renews them thereafter.
+
+The provider must have cloud recording enabled, and its tenant/account policy must allow the app to access those recordings. Zoom and Graph API limits, recording readiness delays, and SQS retries mean ingestion happens after the provider makes a recording available, not necessarily at the exact moment the call ends. Check the recording worker's CloudWatch logs and the recording-events dead-letter queue when an event does not appear in the dashboard.
 
 ### Architecture diagram
 

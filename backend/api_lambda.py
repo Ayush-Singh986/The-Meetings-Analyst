@@ -11,6 +11,8 @@ from urllib.parse import unquote
 import boto3
 from boto3.dynamodb.conditions import Attr
 
+import platform_webhooks
+
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -203,10 +205,14 @@ def handle_meeting_detail(meeting_id, owner_id):
 
 
 def handler(event, context):
+    method = event.get("requestContext", {}).get("http", {}).get("method", "")
+    path = event.get("rawPath", "/").rstrip("/")
+    if path in {"/webhooks/zoom", "/webhooks/teams"}:
+        return platform_webhooks.handler(event, context)
+
     try:
         owner_id = current_user(event)
-        method = event.get("requestContext", {}).get("http", {}).get("method", "")
-        path = event.get("rawPath", "/").rstrip("/") or "/"
+        path = path or "/"
         query_params = event.get("queryStringParameters") or {}
 
         if method == "POST" and path == "/upload-url":
